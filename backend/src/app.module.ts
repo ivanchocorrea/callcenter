@@ -44,7 +44,7 @@ import { OutboundDialerModule } from './outbound-dialer/outbound-dialer.module';
 import { CustomersModule } from './customers/customers.module';
 import { IvrModule } from './ivr/ivr.module';
 import { QueuesModule } from './queues/queues.module';
-import { RecordingsModule } from './recordings/recordings.module';
+// import { RecordingsModule } from './recordings/recordings.module'; // TEMP: deshabilitado para deploy inicial
 import { ReportsModule } from './reports/reports.module';
 
 // SMS / Callbacks (Fase 14)
@@ -149,7 +149,7 @@ import { CompanyScopeGuard } from './common/guards/company-scope.guard';
     CustomersModule,
     IvrModule,
     QueuesModule,
-    RecordingsModule,
+    // RecordingsModule, // TEMP: deshabilitado para deploy inicial
     ReportsModule,
 
     // SMS / Callbacks
