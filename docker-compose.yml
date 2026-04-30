@@ -1,0 +1,168 @@
+version: "3.9"
+
+# =====================================================================
+#  Call Center NODOE — Stack completo
+#  Servicios: backend, frontend, mysql, redis, asterisk, nginx
+# =====================================================================
+
+networks:
+  callcenter-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  recordings-data:
+  asterisk-conf:
+  asterisk-sounds:
+  nginx-certs:
+
+services:
+
+  # ---------------------------------------------------------------
+  #  MySQL 8
+  # ---------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: cc-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - --default-authentication-plugin=caching_sha2_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_connections=500
+      - --innodb_buffer_pool_size=1G
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - callcenter-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------
+  #  Redis 7
+  # ---------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: cc-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - callcenter-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------
+  #  Asterisk 20
+  # ---------------------------------------------------------------
+  asterisk:
+    image: andrius/asterisk:20.x-current
+    container_name: cc-asterisk
+    restart: unless-stopped
+    network_mode: host        # host networking para que SIP/RTP funcione bien
+    volumes:
+      - ./asterisk/etc:/etc/asterisk
+      - asterisk-sounds:/var/lib/asterisk/sounds
+      - recordings-data:/var/spool/asterisk/recording
+    environment:
+      ASTERISK_UID: "1000"
+      ASTERISK_GID: "1000"
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show uptime"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------
+  #  Backend NestJS
+  # ---------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cc-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - recordings-data:/var/recordings
+    ports:
+      - "${BACKEND_PORT}:3001"
+    networks:
+      - callcenter-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------
+  #  Frontend Next.js
+  # ---------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cc-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    networks:
+      - callcenter-net
+
+  # ---------------------------------------------------------------
+  #  Nginx (reverse proxy + TLS)
+  # ---------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cc-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-certs:/etc/letsencrypt
+    networks:
+      - callcenter-net

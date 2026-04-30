@@ -1,0 +1,78 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+
+# Builds
+dist/
+build/
+.next/
+out/
+
+# Cachés
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Env files (NUNCA subir secretos a GitHub)
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+*.pem
+*.key
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.history/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Recordings (audios de llamadas, no subir al repo)
+recordings/
+recordings-data/
+*.wav
+*.mp3
+*.gsm
+
+# Asterisk runtime
+asterisk/var/
+asterisk/log/
+asterisk/run/
+
+# Backups y dumps
+*.sql.gz
+*.dump
+*.backup
+backups/
+
+# Volumes Docker (montados localmente)
+mysql-data/
+redis-data/
+nginx-certs/
+
+# Archivos temporales y privados
+*.private.*
+secrets/
+.tmp/
+tmp/

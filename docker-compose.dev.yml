@@ -1,0 +1,113 @@
+version: "3.9"
+
+# =====================================================================
+#  Call Center NODOE — Stack DEV (sin Asterisk, sin nginx)
+#
+#  Para qué sirve: probar todo el panel web (UI admin/supervisor/agente,
+#  CRM, importación, IVR config, colas config, bots IA config, etc.) en
+#  Windows / macOS sin necesidad de Asterisk.
+#
+#  Lo que NO funciona en este modo: hacer/recibir llamadas reales.
+#  Para eso, usa `docker-compose.yml` en un VPS Linux (o WSL2) con un
+#  proveedor SIP real.
+#
+#  Cómo usar:
+#    docker compose -f docker-compose.dev.yml up -d
+#    Frontend  → http://localhost:3000
+#    Backend   → http://localhost:3001
+#    Swagger   → http://localhost:3001/api/docs
+# =====================================================================
+
+networks:
+  callcenter-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  recordings-data:
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: cc-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - --default-authentication-plugin=caching_sha2_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - callcenter-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cc-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - callcenter-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cc-backend-dev
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      ASTERISK_HOST: "asterisk-disabled"  # forzar fallo silencioso del bridge
+    volumes:
+      - recordings-data:/var/recordings
+    ports:
+      - "3001:3001"
+    networks:
+      - callcenter-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cc-frontend-dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    networks:
+      - callcenter-net
