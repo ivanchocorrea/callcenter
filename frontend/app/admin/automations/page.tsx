@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Workflow } from 'lucide-react';
+import { AutomationFormModal } from './AutomationFormModal';
 
 interface Rule {
   id: number;
@@ -16,13 +17,16 @@ export default function AutomationsPage() {
   const [items, setItems] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/automations')
       .then(res => setItems(unwrap<Rule[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar automatizaciones'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -32,7 +36,7 @@ export default function AutomationsPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Automatizaciones</h2>
             <p className="text-slate-500 mt-1">Reglas if-then para automatizar acciones (crear ticket, enviar webhook, mandar SMS, etc.).</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nueva regla
           </button>
         </div>
@@ -62,6 +66,7 @@ export default function AutomationsPage() {
           </table>
         </div>
       </div>
+      {openCreate && <AutomationFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }
