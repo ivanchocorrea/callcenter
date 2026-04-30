@@ -33,19 +33,19 @@ export class User {
   @Column({ name: 'full_name', length: 180 })
   fullName!: string;
 
-  @Column({ name: 'display_name', length: 120, nullable: true })
+  @Column({ name: 'display_name', type: 'varchar', length: 120, nullable: true })
   displayName!: string | null;
 
-  @Column({ name: 'avatar_url', length: 500, nullable: true })
+  @Column({ name: 'avatar_url', type: 'varchar', length: 500, nullable: true })
   avatarUrl!: string | null;
 
-  @Column({ length: 40, nullable: true })
+  @Column({ type: 'varchar', length: 40, nullable: true })
   phone!: string | null;
 
-  @Column({ length: 80, nullable: true })
+  @Column({ type: 'varchar', length: 80, nullable: true })
   timezone!: string | null;
 
-  @Column({ length: 10, nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
   locale!: string | null;
 
   @Column({
@@ -58,7 +58,7 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt!: Date | null;
 
-  @Column({ name: 'last_login_ip', length: 50, nullable: true })
+  @Column({ name: 'last_login_ip', type: 'varchar', length: 50, nullable: true })
   lastLoginIp!: string | null;
 
   @Column({ name: 'failed_login_count', type: 'int', default: 0 })
@@ -73,10 +73,10 @@ export class User {
   @Column({ name: 'two_factor_secret_encrypted', type: 'text', nullable: true })
   twoFactorSecretEncrypted!: string | null;
 
-  @Column({ name: 'sso_provider', length: 60, nullable: true })
+  @Column({ name: 'sso_provider', type: 'varchar', length: 60, nullable: true })
   ssoProvider!: string | null;
 
-  @Column({ name: 'sso_external_id', length: 200, nullable: true })
+  @Column({ name: 'sso_external_id', type: 'varchar', length: 200, nullable: true })
   ssoExternalId!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })

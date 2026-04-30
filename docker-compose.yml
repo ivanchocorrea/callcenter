@@ -1,8 +1,13 @@
-version: "3.9"
-
 # =====================================================================
 #  Call Center NODOE — Stack completo
 #  Servicios: backend, frontend, mysql, redis, asterisk, nginx
+#
+#  Para producción usar combinado con docker-compose.prod.yml:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+#  Asterisk está bajo el profile "telephony" — solo se levanta con:
+#    docker compose --profile telephony up -d
+#  (cuando tengas SIP trunk configurado)
 # =====================================================================
 
 networks:
@@ -40,8 +45,6 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./db/migrations:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "3306:3306"
     networks:
       - callcenter-net
     healthcheck:
@@ -60,8 +63,6 @@ services:
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
-    ports:
-      - "6379:6379"
     networks:
       - callcenter-net
     healthcheck:
@@ -71,13 +72,15 @@ services:
       retries: 5
 
   # ---------------------------------------------------------------
-  #  Asterisk 20
+  #  Asterisk 20 (deshabilitado por defecto — usar --profile telephony)
   # ---------------------------------------------------------------
   asterisk:
-    image: andrius/asterisk:20.x-current
+    image: andrius/asterisk:18-current
     container_name: cc-asterisk
     restart: unless-stopped
-    network_mode: host        # host networking para que SIP/RTP funcione bien
+    network_mode: host
+    profiles:
+      - telephony
     volumes:
       - ./asterisk/etc:/etc/asterisk
       - asterisk-sounds:/var/lib/asterisk/sounds
@@ -110,11 +113,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV}
     volumes:
-      - ./backend:/app
-      - /app/node_modules
       - recordings-data:/var/recordings
-    ports:
-      - "${BACKEND_PORT}:3001"
     networks:
       - callcenter-net
     healthcheck:
@@ -130,30 +129,28 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.somoscallcenter.com
+        NEXT_PUBLIC_WS_URL: wss://api.somoscallcenter.com
+        NEXT_PUBLIC_SIP_WSS_URL: wss://sip.somoscallcenter.com/ws
     container_name: cc-frontend
     restart: unless-stopped
-    depends_on:
-      - backend
     env_file:
       - .env
     environment:
       NODE_ENV: ${NODE_ENV}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - "${FRONTEND_PORT}:3000"
     networks:
       - callcenter-net
 
   # ---------------------------------------------------------------
-  #  Nginx (reverse proxy + TLS)
+  #  Nginx interno (deshabilitado — usamos el Nginx del sistema en el VPS)
   # ---------------------------------------------------------------
   nginx:
     image: nginx:1.27-alpine
     container_name: cc-nginx
     restart: unless-stopped
+    profiles:
+      - internal-nginx
     depends_on:
       - backend
       - frontend
