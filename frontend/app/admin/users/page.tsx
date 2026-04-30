@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Users as UsersIcon } from 'lucide-react';
+import { UserFormModal } from './UserFormModal';
 
 interface User {
   id: number;
@@ -18,13 +19,16 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/users')
       .then(res => setUsers(unwrap<User[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar usuarios'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -34,7 +38,7 @@ export default function UsersPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Usuarios</h2>
             <p className="text-slate-500 mt-1">Gestiona los usuarios de tu empresa.</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nuevo usuario
           </button>
         </div>
@@ -68,6 +72,7 @@ export default function UsersPage() {
           </table>
         </div>
       </div>
+      {openCreate && <UserFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }

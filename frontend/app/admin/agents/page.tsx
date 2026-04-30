@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, HeadphonesIcon } from 'lucide-react';
+import { AgentFormModal } from './AgentFormModal';
 
 interface Agent {
   id: number;
@@ -18,13 +19,16 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/agents')
       .then(res => setAgents(unwrap<Agent[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar agentes'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -34,7 +38,7 @@ export default function AgentsPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Agentes</h2>
             <p className="text-slate-500 mt-1">Operadores que atienden llamadas con WebRTC.</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nuevo agente
           </button>
         </div>
@@ -66,6 +70,7 @@ export default function AgentsPage() {
           </table>
         </div>
       </div>
+      {openCreate && <AgentFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }
