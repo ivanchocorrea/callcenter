@@ -31,6 +31,7 @@ import {
   Megaphone,
   ClipboardCheck,
   Database,
+  KeyRound,
 } from 'lucide-react';
 
 interface NavItem {
@@ -56,13 +57,15 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/admin/sip-trunks', label: 'Troncales SIP', icon: PhoneCall },
     { href: '/admin/queues', label: 'Colas', icon: ListTree },
     { href: '/admin/ivr', label: 'IVR', icon: Mic },
+    { href: '/admin/ai-providers', label: 'Proveedores IA', icon: KeyRound },
     { href: '/admin/ai-bots', label: 'Bots IA', icon: Bot },
     { href: '/admin/ai-prompts', label: 'Prompts IA', icon: Wrench },
     { href: '/admin/customers', label: 'Clientes / CRM', icon: Users },
     { href: '/admin/imports', label: 'Importar', icon: Database },
     { href: '/admin/campaigns', label: 'Campañas', icon: Megaphone },
     { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
-    { href: '/admin/sms', label: 'SMS', icon: MessageSquare },
+    { href: '/admin/sms-providers', label: 'Proveedores SMS', icon: KeyRound },
+    { href: '/admin/sms', label: 'Enviar SMS', icon: MessageSquare },
     { href: '/admin/automations', label: 'Automatizaciones', icon: Workflow },
     { href: '/admin/recordings', label: 'Grabaciones', icon: FileText },
     { href: '/admin/reports', label: 'Reportes', icon: FileText },
