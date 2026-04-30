@@ -92,7 +92,7 @@ export class OutboundDialerService {
     const call = await this.calls.create({
       companyId: actor.companyId,
       direction: 'outbound',
-      fromNumber: dto.caller_id ?? null,
+      fromNumber: dto.caller_id ?? undefined,
       toNumber: phoneNorm,
       trunkId: Number(trunk.id),
       customerId: customerId ?? undefined,

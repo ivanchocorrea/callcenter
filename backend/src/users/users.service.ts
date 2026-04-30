@@ -32,7 +32,7 @@ export class UsersService {
     const targetCompanyId = dto.company_id ?? currentCompanyId;
 
     const existing = await this.repo.findOne({
-      where: { email: dto.email, companyId: targetCompanyId ?? null },
+      where: { email: dto.email, companyId: targetCompanyId ?? undefined },
     });
     if (existing) throw new ConflictException(`Email ya registrado en esta empresa`);
 
