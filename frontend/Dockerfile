@@ -5,6 +5,12 @@ RUN npm install --no-audit --no-fund
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_API_URL=https://api.somoscallcenter.com
+ARG NEXT_PUBLIC_WS_URL=wss://api.somoscallcenter.com
+ARG NEXT_PUBLIC_SIP_WSS_URL=wss://sip.somoscallcenter.com/ws
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_SIP_WSS_URL=$NEXT_PUBLIC_SIP_WSS_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
