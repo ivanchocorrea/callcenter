@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Megaphone } from 'lucide-react';
+import { CampaignFormModal } from './CampaignFormModal';
 
 interface Campaign {
   id: number;
@@ -18,13 +19,16 @@ export default function CampaignsPage() {
   const [items, setItems] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/campaigns')
       .then(res => setItems(unwrap<Campaign[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar campañas'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -34,7 +38,7 @@ export default function CampaignsPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Campañas</h2>
             <p className="text-slate-500 mt-1">Llamadas masivas salientes (predictivas, progresivas, manuales).</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nueva campaña
           </button>
         </div>
@@ -66,6 +70,7 @@ export default function CampaignsPage() {
           </table>
         </div>
       </div>
+      {openCreate && <CampaignFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }
