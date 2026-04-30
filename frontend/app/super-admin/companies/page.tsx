@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus } from 'lucide-react';
+import { CompanyFormModal } from './CompanyFormModal';
 
 interface Company {
   id: number;
@@ -20,8 +21,10 @@ export default function CompaniesListPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api
       .get('/companies')
       .then(res => {
@@ -38,10 +41,13 @@ export default function CompaniesListPage() {
             created_at: c.createdAt ?? c.created_at,
           })),
         );
+        setError(null);
       })
       .catch(err => setError(err?.response?.data?.error?.message ?? 'Error al cargar empresas'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -51,7 +57,10 @@ export default function CompaniesListPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Empresas</h2>
             <p className="text-slate-500 mt-1">Todas las empresas del SaaS.</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button
+            onClick={() => setOpenCreate(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium"
+          >
             <Plus className="w-4 h-4" /> Nueva empresa
           </button>
         </div>
@@ -101,6 +110,13 @@ export default function CompaniesListPage() {
           </table>
         </div>
       </div>
+
+      {openCreate && (
+        <CompanyFormModal
+          onClose={() => setOpenCreate(false)}
+          onSaved={() => reload()}
+        />
+      )}
     </AppShell>
   );
 }
