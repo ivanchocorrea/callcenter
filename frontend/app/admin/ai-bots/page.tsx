@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Bot, Sparkles } from 'lucide-react';
+import { BotFormModal } from './BotFormModal';
 
 interface BotItem {
   id: number;
@@ -17,13 +18,16 @@ export default function AiBotsPage() {
   const [bots, setBots] = useState<BotItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/ai/bots')
       .then(res => setBots(unwrap<BotItem[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar bots'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -33,7 +37,7 @@ export default function AiBotsPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Bots de IA</h2>
             <p className="text-slate-500 mt-1">Asistentes conversacionales para atender llamadas con IA.</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nuevo bot
           </button>
         </div>
@@ -74,6 +78,7 @@ export default function AiBotsPage() {
           </table>
         </div>
       </div>
+      {openCreate && <BotFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }

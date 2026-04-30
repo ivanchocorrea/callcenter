@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, ListTree } from 'lucide-react';
+import { QueueFormModal } from './QueueFormModal';
 
 interface Queue {
   id: number;
@@ -17,13 +18,16 @@ export default function QueuesPage() {
   const [items, setItems] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  useEffect(() => {
+  function reload() {
+    setLoading(true);
     api.get('/queues')
       .then(res => setItems(unwrap<Queue[]>(res)))
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar colas'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   return (
     <AppShell>
@@ -33,7 +37,7 @@ export default function QueuesPage() {
             <h2 className="text-2xl font-semibold text-slate-900">Colas</h2>
             <p className="text-slate-500 mt-1">Distribuye las llamadas entrantes entre agentes.</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
+          <button onClick={() => setOpenCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium">
             <Plus className="w-4 h-4" /> Nueva cola
           </button>
         </div>
@@ -65,6 +69,7 @@ export default function QueuesPage() {
           </table>
         </div>
       </div>
+      {openCreate && <QueueFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
     </AppShell>
   );
 }
