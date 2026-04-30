@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import { CompanyFormModal } from './CompanyFormModal';
 
 interface Company {
@@ -22,6 +22,7 @@ export default function CompaniesListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
 
   function reload() {
     setLoading(true);
@@ -75,17 +76,18 @@ export default function CompaniesListPage() {
                 <th className="text-left px-4 py-3 font-medium">Estado</th>
                 <th className="text-left px-4 py-3 font-medium">Email</th>
                 <th className="text-left px-4 py-3 font-medium">Creada</th>
+                <th className="text-right px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Cargando…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Cargando…</td></tr>
               )}
               {error && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-rose-600">{error}</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-rose-600">{error}</td></tr>
               )}
               {!loading && !error && companies.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">No hay empresas todavía. Crea la primera.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No hay empresas todavía. Crea la primera.</td></tr>
               )}
               {companies.map(c => (
                 <tr key={c.id} className="hover:bg-slate-50">
@@ -104,6 +106,11 @@ export default function CompaniesListPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">{c.primary_email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{new Date(c.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setEditId(c.id)} className="text-slate-400 hover:text-brand-600" title="Editar">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -114,6 +121,13 @@ export default function CompaniesListPage() {
       {openCreate && (
         <CompanyFormModal
           onClose={() => setOpenCreate(false)}
+          onSaved={() => reload()}
+        />
+      )}
+      {editId != null && (
+        <CompanyFormModal
+          editId={editId}
+          onClose={() => setEditId(null)}
           onSaved={() => reload()}
         />
       )}

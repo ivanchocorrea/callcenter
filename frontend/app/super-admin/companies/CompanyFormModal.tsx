@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 interface Props {
   onClose: () => void;
   onSaved: () => void;
+  editId?: number | null;
 }
 
 interface FormData {
@@ -30,10 +31,29 @@ const DEFAULTS: FormData = {
   default_locale: 'es-CO',
 };
 
-export function CompanyFormModal({ onClose, onSaved }: Props) {
+export function CompanyFormModal({ onClose, onSaved, editId }: Props) {
   const [data, setData] = useState<FormData>(DEFAULTS);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isEdit = editId != null;
+
+  // Si editId, cargar datos al abrir
+  if (typeof window !== 'undefined' && editId != null && data.slug === '' && data.legal_name === '') {
+    api.get(`/companies/${editId}`).then(res => {
+      const c: any = res.data?.data ?? res.data;
+      setData({
+        slug: c.slug,
+        legal_name: c.legalName ?? c.legal_name,
+        display_name: c.displayName ?? c.display_name,
+        tax_id: c.taxId ?? c.tax_id ?? '',
+        country: c.country ?? '',
+        timezone: c.timezone ?? '',
+        default_locale: c.defaultLocale ?? c.default_locale ?? '',
+        primary_email: c.primaryEmail ?? c.primary_email ?? '',
+        primary_phone: c.primaryPhone ?? c.primary_phone ?? '',
+      });
+    }).catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar empresa'));
+  }
 
   function update<K extends keyof FormData>(key: K, value: FormData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
@@ -78,7 +98,11 @@ export function CompanyFormModal({ onClose, onSaved }: Props) {
       if (data.primary_email) payload.primary_email = data.primary_email;
       if (data.primary_phone) payload.primary_phone = data.primary_phone;
 
-      await api.post('/companies', payload);
+      if (isEdit) {
+        await api.patch(`/companies/${editId}`, payload);
+      } else {
+        await api.post('/companies', payload);
+      }
       onSaved();
       onClose();
     } catch (e: any) {
@@ -96,8 +120,8 @@ export function CompanyFormModal({ onClose, onSaved }: Props) {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Nueva empresa</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Crea un nuevo tenant en el SaaS.</p>
+            <h3 className="text-lg font-semibold text-slate-900">{isEdit ? 'Editar empresa' : 'Nueva empresa'}</h3>
+            <p className="text-xs text-slate-500 mt-0.5">{isEdit ? 'Modifica los datos del tenant.' : 'Crea un nuevo tenant en el SaaS.'}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
@@ -249,7 +273,7 @@ export function CompanyFormModal({ onClose, onSaved }: Props) {
             disabled={submitting}
             className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
           >
-            {submitting ? 'Creando…' : 'Crear empresa'}
+            {submitting ? (isEdit ? 'Guardando…' : 'Creando…') : (isEdit ? 'Guardar cambios' : 'Crear empresa')}
           </button>
         </div>
       </div>
