@@ -24,12 +24,20 @@ export default function IvrListPage() {
             <h2 className="text-2xl font-semibold text-slate-900">IVR</h2>
             <p className="text-slate-500 mt-1">Menús de respuesta de voz interactiva.</p>
           </div>
-          <Link
-            href="/admin/ivr/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" /> Nuevo IVR
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/ivr/audios"
+              className="inline-flex items-center gap-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 px-4 py-2 text-sm font-medium"
+            >
+              <Mic className="w-4 h-4" /> Audios
+            </Link>
+            <Link
+              href="/admin/ivr/new"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" /> Nuevo IVR
+            </Link>
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white">
