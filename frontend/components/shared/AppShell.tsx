@@ -32,6 +32,7 @@ import {
   ClipboardCheck,
   Database,
   KeyRound,
+  HardDrive,
 } from 'lucide-react';
 
 interface NavItem {
@@ -67,6 +68,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/admin/sms-providers', label: 'Proveedores SMS', icon: KeyRound },
     { href: '/admin/sms', label: 'Enviar SMS', icon: MessageSquare },
     { href: '/admin/automations', label: 'Automatizaciones', icon: Workflow },
+    { href: '/admin/storage-providers', label: 'Almacenamiento', icon: HardDrive },
     { href: '/admin/recordings', label: 'Grabaciones', icon: FileText },
     { href: '/admin/reports', label: 'Reportes', icon: FileText },
     { href: '/admin/quality', label: 'Calidad', icon: ClipboardCheck },
