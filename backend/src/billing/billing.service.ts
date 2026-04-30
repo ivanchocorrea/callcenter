@@ -39,6 +39,57 @@ export class BillingService {
     return { id: r?.insertId ?? r?.[0]?.insertId };
   }
 
+  /** Cambiar plan de una empresa (super_admin only). Cancela suscripción anterior y crea nueva. */
+  async changePlan(companyId: number, planSlug: string, options?: { isTrial?: boolean; trialDays?: number }): Promise<{ id: number }> {
+    const plan = await this.ds.query(`SELECT id FROM plans WHERE slug = ?`, [planSlug]);
+    if (!plan[0]) throw new Error(`Plan ${planSlug} no encontrado`);
+    await this.ds.query(
+      `UPDATE subscriptions SET status = 'canceled', canceled_at = NOW() WHERE company_id = ? AND status IN ('active','trialing')`,
+      [companyId],
+    );
+    const isTrial = options?.isTrial ?? false;
+    const days = options?.trialDays ?? 14;
+    const trialClause = isTrial ? `DATE_ADD(NOW(), INTERVAL ${days} DAY)` : 'NULL';
+    const r: any = await this.ds.query(
+      `INSERT INTO subscriptions (company_id, plan_id, status, is_trial, trial_ends_at, started_at, current_period_start, current_period_end)
+       VALUES (?, ?, ?, ?, ${trialClause}, NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 1 MONTH))`,
+      [companyId, plan[0].id, isTrial ? 'trialing' : 'active', isTrial],
+    );
+    return { id: r?.insertId ?? r?.[0]?.insertId };
+  }
+
+  /** Override de límites por empresa (custom override del plan). */
+  async setCustomLimits(companyId: number, limits: { max_users?: number; max_agents?: number; max_concurrent_calls?: number }): Promise<void> {
+    await this.ds.query(
+      `UPDATE subscriptions SET metadata = JSON_SET(COALESCE(metadata, '{}'), '$.overrides', CAST(? AS JSON))
+       WHERE company_id = ? AND status IN ('active','trialing')`,
+      [JSON.stringify(limits), companyId],
+    );
+  }
+
+  /** Obtener límites efectivos de empresa (plan + overrides) + uso actual. */
+  async getCompanyLimits(companyId: number): Promise<{ plan_slug: string | null; max_users: number | null; max_agents: number | null; max_concurrent_calls: number | null; current: { users: number; agents: number } }> {
+    const sub = await this.ds.query(
+      `SELECT s.metadata, p.slug as plan_slug, p.max_users, p.max_agents, p.max_concurrent_calls
+         FROM subscriptions s
+         INNER JOIN plans p ON p.id = s.plan_id
+         WHERE s.company_id = ? AND s.status IN ('active','trialing')
+         ORDER BY s.id DESC LIMIT 1`,
+      [companyId],
+    );
+    const meta = sub[0]?.metadata ? (typeof sub[0].metadata === 'string' ? JSON.parse(sub[0].metadata) : sub[0].metadata) : {};
+    const overrides = meta.overrides ?? {};
+    const usersCount = (await this.ds.query(`SELECT COUNT(*) c FROM users WHERE company_id = ?`, [companyId]))[0]?.c ?? 0;
+    const agentsCount = (await this.ds.query(`SELECT COUNT(*) c FROM agents WHERE company_id = ?`, [companyId]))[0]?.c ?? 0;
+    return {
+      plan_slug: sub[0]?.plan_slug ?? null,
+      max_users: overrides.max_users ?? sub[0]?.max_users ?? null,
+      max_agents: overrides.max_agents ?? sub[0]?.max_agents ?? null,
+      max_concurrent_calls: overrides.max_concurrent_calls ?? sub[0]?.max_concurrent_calls ?? null,
+      current: { users: Number(usersCount), agents: Number(agentsCount) },
+    };
+  }
+
   // ---------- usage
   async currentUsage(companyId: number): Promise<unknown[]> {
     return this.ds.query(

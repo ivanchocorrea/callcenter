@@ -70,6 +70,9 @@ import { OmnichannelModule } from './omnichannel/omnichannel.module';
 // Mantenimiento (Fase 26)
 import { MaintenanceModule } from './maintenance/maintenance.module';
 
+// Schedules (FASE 18)
+import { SchedulesModule } from './schedules/schedules.module';
+
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CompanyScopeGuard } from './common/guards/company-scope.guard';
@@ -174,6 +177,9 @@ import { CompanyScopeGuard } from './common/guards/company-scope.guard';
 
     // Mantenimiento (panel para no desarrolladores)
     MaintenanceModule,
+
+    // Schedules (horarios + holidays)
+    SchedulesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

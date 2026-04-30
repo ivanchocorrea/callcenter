@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, CreditCard } from 'lucide-react';
 import { CompanyFormModal } from './CompanyFormModal';
+import { PlanChangeModal } from './PlanChangeModal';
 
 interface Company {
   id: number;
@@ -23,6 +24,7 @@ export default function CompaniesListPage() {
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [planForCompany, setPlanForCompany] = useState<{ id: number; name: string } | null>(null);
 
   function reload() {
     setLoading(true);
@@ -107,9 +109,15 @@ export default function CompaniesListPage() {
                   <td className="px-4 py-3 text-slate-700">{c.primary_email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{new Date(c.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditId(c.id)} className="text-slate-400 hover:text-brand-600" title="Editar">
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => setPlanForCompany({ id: c.id, name: c.display_name })}
+                        className="text-slate-400 hover:text-brand-600" title="Plan & límites">
+                        <CreditCard className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditId(c.id)} className="text-slate-400 hover:text-brand-600" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -128,6 +136,14 @@ export default function CompaniesListPage() {
         <CompanyFormModal
           editId={editId}
           onClose={() => setEditId(null)}
+          onSaved={() => reload()}
+        />
+      )}
+      {planForCompany && (
+        <PlanChangeModal
+          companyId={planForCompany.id}
+          companyName={planForCompany.name}
+          onClose={() => setPlanForCompany(null)}
           onSaved={() => reload()}
         />
       )}
