@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Users as UsersIcon, KeyRound, Lock, Unlock, Trash2, AlertCircle } from 'lucide-react';
 import { UserFormModal } from './UserFormModal';
+import { ConfirmDialog, PromptDialog, Toast, DialogIcons } from '@/components/shared/Dialog';
 
 interface User {
   id: number;
@@ -22,12 +23,22 @@ const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
 };
 
+type ConfirmAction =
+  | { kind: 'status'; user: User; newStatus: 'active' | 'disabled' | 'locked' }
+  | { kind: 'delete'; user: User }
+  | null;
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [pwUser, setPwUser] = useState<User | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; variant: 'success' | 'danger' | 'info' } | null>(null);
 
   function reload() {
     setLoading(true);
@@ -38,42 +49,57 @@ export default function UsersPage() {
   }
   useEffect(() => { reload(); }, []);
 
-  async function changeStatus(id: number, newStatus: 'active' | 'disabled' | 'locked', email: string) {
-    const labels: Record<string, string> = { active: 'reactivar', disabled: 'suspender', locked: 'bloquear' };
-    if (!confirm(`¿${labels[newStatus]} a ${email}?`)) return;
-    setBusyId(id);
+  async function executeStatusChange() {
+    if (!confirmAction || confirmAction.kind !== 'status') return;
+    const { user, newStatus } = confirmAction;
+    setActionLoading(true);
+    setBusyId(user.id);
     try {
-      await api.patch(`/users/${id}`, { status: newStatus });
+      await api.patch(`/users/${user.id}`, { status: newStatus });
+      const labels: Record<string, string> = { active: 'reactivado', disabled: 'suspendido', locked: 'bloqueado' };
+      setToast({ msg: `${user.email} ${labels[newStatus]} correctamente`, variant: 'success' });
+      setConfirmAction(null);
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al cambiar estado');
-    } finally { setBusyId(null); }
-  }
-
-  async function resetPassword(id: number, email: string) {
-    const newPass = prompt(`Nueva contraseña para ${email} (mínimo 10 caracteres):`);
-    if (!newPass || newPass.length < 10) {
-      if (newPass) alert('La contraseña debe tener al menos 10 caracteres');
-      return;
+      setToast({ msg: e?.response?.data?.error?.message ?? 'Error al cambiar estado', variant: 'danger' });
+    } finally {
+      setActionLoading(false);
+      setBusyId(null);
     }
-    setBusyId(id);
-    try {
-      await api.patch(`/users/${id}/password`, { password: newPass });
-      alert(`✅ Contraseña actualizada para ${email}`);
-    } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al cambiar contraseña');
-    } finally { setBusyId(null); }
   }
 
-  async function deleteUser(id: number, email: string) {
-    if (!confirm(`⚠️ ¿ELIMINAR permanentemente a ${email}?\n\nEsto desactiva su cuenta. Para historial GDPR, mejor usa "Suspender".`)) return;
-    setBusyId(id);
+  async function executeDelete() {
+    if (!confirmAction || confirmAction.kind !== 'delete') return;
+    const { user } = confirmAction;
+    setActionLoading(true);
+    setBusyId(user.id);
     try {
-      await api.patch(`/users/${id}`, { status: 'disabled' });
+      await api.patch(`/users/${user.id}`, { status: 'disabled' });
+      setToast({ msg: `${user.email} desactivado`, variant: 'success' });
+      setConfirmAction(null);
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
-    } finally { setBusyId(null); }
+      setToast({ msg: e?.response?.data?.error?.message ?? 'Error al eliminar', variant: 'danger' });
+    } finally {
+      setActionLoading(false);
+      setBusyId(null);
+    }
+  }
+
+  async function executePasswordReset(newPassword: string) {
+    if (!pwUser) return;
+    setActionLoading(true);
+    setBusyId(pwUser.id);
+    try {
+      await api.patch(`/users/${pwUser.id}/password`, { password: newPassword });
+      setToast({ msg: `Contraseña actualizada para ${pwUser.email}`, variant: 'success' });
+      setPwUser(null);
+    } catch (e: any) {
+      setToast({ msg: e?.response?.data?.error?.message ?? 'Error al cambiar contraseña', variant: 'danger' });
+    } finally {
+      setActionLoading(false);
+      setBusyId(null);
+    }
   }
 
   return (
@@ -128,7 +154,7 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1 opacity-30 group-hover:opacity-100 transition">
                       <button
-                        onClick={() => resetPassword(u.id, u.email)}
+                        onClick={() => setPwUser(u)}
                         disabled={busyId === u.id}
                         title="Cambiar contraseña"
                         className="p-1.5 rounded text-slate-500 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50">
@@ -136,7 +162,7 @@ export default function UsersPage() {
                       </button>
                       {u.status === 'active' ? (
                         <button
-                          onClick={() => changeStatus(u.id, 'disabled', u.email)}
+                          onClick={() => setConfirmAction({ kind: 'status', user: u, newStatus: 'disabled' })}
                           disabled={busyId === u.id}
                           title="Suspender"
                           className="p-1.5 rounded text-slate-500 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50">
@@ -144,7 +170,7 @@ export default function UsersPage() {
                         </button>
                       ) : (
                         <button
-                          onClick={() => changeStatus(u.id, 'active', u.email)}
+                          onClick={() => setConfirmAction({ kind: 'status', user: u, newStatus: 'active' })}
                           disabled={busyId === u.id}
                           title="Reactivar"
                           className="p-1.5 rounded text-slate-500 hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50">
@@ -152,7 +178,7 @@ export default function UsersPage() {
                         </button>
                       )}
                       <button
-                        onClick={() => deleteUser(u.id, u.email)}
+                        onClick={() => setConfirmAction({ kind: 'delete', user: u })}
                         disabled={busyId === u.id}
                         title="Eliminar"
                         className="p-1.5 rounded text-slate-500 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50">
@@ -169,11 +195,79 @@ export default function UsersPage() {
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 flex gap-2">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
-            <strong>Tip:</strong> El campo <code className="bg-white px-1 rounded">company_id</code> al crear se autocompleta con tu empresa actual. Solo el super_admin debe especificarlo cuando crea usuarios para OTRAS empresas.
+            <strong>Tip:</strong> Para ver usuarios de TODAS las empresas, ve a <code className="bg-white px-1 rounded">/super-admin/users</code>. Esta vista es solo para tu empresa.
           </div>
         </div>
       </div>
+
       {openCreate && <UserFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'status'}
+        title={
+          confirmAction?.kind === 'status'
+            ? confirmAction.newStatus === 'active' ? 'Reactivar usuario' : 'Suspender usuario'
+            : ''
+        }
+        message={
+          confirmAction?.kind === 'status' ? (
+            <>
+              {confirmAction.newStatus === 'active'
+                ? <>Vas a reactivar a <strong>{confirmAction.user.email}</strong>. Podrá iniciar sesión nuevamente.</>
+                : <>Vas a suspender a <strong>{confirmAction.user.email}</strong>. No podrá iniciar sesión hasta que lo reactives.</>}
+            </>
+          ) : ''
+        }
+        variant={confirmAction?.kind === 'status' && confirmAction.newStatus === 'active' ? 'success' : 'warning'}
+        icon={confirmAction?.kind === 'status' && confirmAction.newStatus === 'active' ? DialogIcons.Unlock : DialogIcons.Lock}
+        confirmText={confirmAction?.kind === 'status' && confirmAction.newStatus === 'active' ? 'Sí, reactivar' : 'Sí, suspender'}
+        onConfirm={executeStatusChange}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'delete'}
+        title="Eliminar usuario"
+        message={
+          confirmAction?.kind === 'delete' ? (
+            <>
+              Vas a desactivar permanentemente a <strong>{confirmAction.user.email}</strong>.
+              <br /><span className="text-xs text-slate-500 mt-1 block">Su historial se conserva por GDPR. Esta acción cambia su estado a "disabled".</span>
+            </>
+          ) : ''
+        }
+        variant="danger"
+        icon={DialogIcons.Trash}
+        confirmText="Sí, eliminar"
+        onConfirm={executeDelete}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <PromptDialog
+        open={pwUser !== null}
+        title="Cambiar contraseña"
+        message={pwUser && <>Nueva contraseña para <strong>{pwUser.email}</strong></>}
+        label="Nueva contraseña"
+        type="password"
+        placeholder="Mínimo 10 caracteres"
+        minLength={10}
+        helperText="Usa una combinación de letras, números y símbolos"
+        confirmText="Actualizar contraseña"
+        variant="warning"
+        icon={DialogIcons.Key}
+        onSubmit={executePasswordReset}
+        onCancel={() => !actionLoading && setPwUser(null)}
+        loading={actionLoading}
+      />
+
+      <Toast
+        open={toast !== null}
+        message={toast?.msg ?? ''}
+        variant={toast?.variant ?? 'info'}
+        onClose={() => setToast(null)}
+      />
     </AppShell>
   );
 }
