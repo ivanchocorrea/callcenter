@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
 import { SmsProviderFormModal } from './SmsProviderFormModal';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Provider {
   id: number;
@@ -32,12 +33,19 @@ export default function SmsProvidersPage() {
   useEffect(() => { reload(); }, []);
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`¿Eliminar el proveedor "${name}"?`)) return;
+    const ok = await confirmAsync({
+      title: 'Eliminar proveedor SMS',
+      message: <>Vas a eliminar el proveedor <strong>"{name}"</strong>. Si está en uso, los SMS dejarán de enviarse hasta configurar otro.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/sms/providers/${id}`);
+      toastShow(`Proveedor "${name}" eliminado`, 'success');
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
+      toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger');
     }
   }
 

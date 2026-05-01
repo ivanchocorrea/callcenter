@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, HardDrive, Trash2 } from 'lucide-react';
 import { StorageProviderFormModal } from './StorageProviderFormModal';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Provider {
   id: number;
@@ -33,12 +34,19 @@ export default function StorageProvidersPage() {
   useEffect(() => { reload(); }, []);
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`¿Eliminar "${name}"?`)) return;
+    const ok = await confirmAsync({
+      title: 'Eliminar almacenamiento',
+      message: <>Vas a eliminar la configuración <strong>"{name}"</strong>. Las nuevas grabaciones se subirán al almacenamiento por defecto.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/storage/providers/${id}`);
+      toastShow(`Almacenamiento "${name}" eliminado`, 'success');
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
+      toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger');
     }
   }
 

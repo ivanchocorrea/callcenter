@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, MessageCircle, Trash2, Copy, Check, Send, Eye, EyeOff } from 'lucide-react';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Account {
   id: number;
@@ -98,8 +99,19 @@ export default function WhatsappPage() {
                         <Send className="w-4 h-4" />
                       </button>
                       <button onClick={async () => {
-                        if (confirm(`¿Desconectar ${a.display_name}?`)) {
-                          await api.delete(`/whatsapp/accounts/${a.id}`);
+                        const ok = await confirmAsync({
+                          title: 'Desconectar cuenta WhatsApp',
+                          message: <>Vas a desconectar <strong>{a.display_name}</strong>. Los mensajes entrantes a este número dejarán de procesarse.</>,
+                          variant: 'warning',
+                          confirmText: 'Sí, desconectar',
+                        });
+                        if (ok) {
+                          try {
+                            await api.delete(`/whatsapp/accounts/${a.id}`);
+                            toastShow(`${a.display_name} desconectada`, 'success');
+                          } catch (e: any) {
+                            toastShow(e?.response?.data?.error?.message ?? 'Error', 'danger');
+                          }
                           reload();
                         }
                       }} className="text-slate-400 hover:text-rose-600">

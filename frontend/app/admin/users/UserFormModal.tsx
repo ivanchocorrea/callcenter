@@ -3,9 +3,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, unwrap } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
-import { X, Eye, EyeOff, Building2, Info } from 'lucide-react';
+import { X, Eye, EyeOff, Building2, Info, UserPlus, Pencil } from 'lucide-react';
 
 interface Props {
+  editId?: number | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -24,10 +25,11 @@ const ROLES = [
   { slug: 'agent', name: 'Agent', desc: 'Atiende llamadas y gestiona clientes' },
 ];
 
-export function UserFormModal({ onClose, onSaved }: Props) {
+export function UserFormModal({ editId, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const isSuperAdmin = user?.roles.includes('super_admin') ?? false;
   const isCompanyAdmin = user?.roles.includes('company_admin') ?? false;
+  const isEdit = editId != null;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,6 +42,24 @@ export function UserFormModal({ onClose, onSaved }: Props) {
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['agent']);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
+  // Cargar datos del usuario en modo edición
+  useEffect(() => {
+    if (!isEdit || !editId) return;
+    setLoadingEdit(true);
+    api.get(`/users/${editId}`)
+      .then(res => {
+        const u = unwrap<any>(res);
+        setEmail(u.email ?? '');
+        setFullName(u.fullName ?? u.full_name ?? '');
+        setPhone(u.phone ?? '');
+        if (u.companyId ?? u.company_id) setCompanyId(String(u.companyId ?? u.company_id));
+        if (Array.isArray(u.roles)) setSelectedRoles(u.roles);
+      })
+      .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar usuario'))
+      .finally(() => setLoadingEdit(false));
+  }, [isEdit, editId]);
 
   // Si es super_admin, cargar todas las empresas para el dropdown
   useEffect(() => {
@@ -53,13 +73,12 @@ export function UserFormModal({ onClose, onSaved }: Props) {
             slug: c.slug,
           }));
           setCompanies(list);
-          // Si tiene empresa activa, preseleccionarla
-          if (user?.company_id && !companyId) setCompanyId(String(user.company_id));
+          if (user?.company_id && !companyId && !isEdit) setCompanyId(String(user.company_id));
         })
         .catch(() => setCompanies([]))
         .finally(() => setLoadingCompanies(false));
     }
-  }, [isSuperAdmin, user?.company_id]);
+  }, [isSuperAdmin, user?.company_id, isEdit]);
 
   function toggleRole(slug: string) {
     setSelectedRoles(prev =>
@@ -79,12 +98,13 @@ export function UserFormModal({ onClose, onSaved }: Props) {
     e.preventDefault();
     setError(null);
 
-    if (!email || !email.includes('@')) return setError('Email inválido');
-    if (!password || password.length < 10) return setError('Contraseña mínimo 10 caracteres');
+    if (!isEdit) {
+      if (!email || !email.includes('@')) return setError('Email inválido');
+      if (!password || password.length < 10) return setError('Contraseña mínimo 10 caracteres');
+    }
     if (!fullName || fullName.length < 2) return setError('Nombre completo requerido');
     if (selectedRoles.length === 0) return setError('Selecciona al menos un rol');
 
-    // Para roles que no son super_admin, debe haber empresa asignada
     const needsCompany = !selectedRoles.includes('super_admin');
     if (needsCompany && !companyId) {
       return setError('Debes asignar el usuario a una empresa');
@@ -92,45 +112,65 @@ export function UserFormModal({ onClose, onSaved }: Props) {
 
     setSubmitting(true);
     try {
-      const payload: any = {
-        email,
-        password,
-        full_name: fullName,
-        role_slugs: selectedRoles,
-      };
-      if (phone) payload.phone = phone;
-      if (companyId) payload.company_id = parseInt(companyId, 10);
-
-      await api.post('/users', payload);
+      if (isEdit) {
+        const payload: any = {
+          full_name: fullName,
+          role_slugs: selectedRoles,
+        };
+        if (phone !== undefined) payload.phone = phone || null;
+        await api.patch(`/users/${editId}`, payload);
+        if (password) {
+          await api.patch(`/users/${editId}/password`, { password });
+        }
+      } else {
+        const payload: any = {
+          email,
+          password,
+          full_name: fullName,
+          role_slugs: selectedRoles,
+        };
+        if (phone) payload.phone = phone;
+        if (companyId) payload.company_id = parseInt(companyId, 10);
+        await api.post('/users', payload);
+      }
       onSaved();
       onClose();
     } catch (e: any) {
-      const msg = e?.response?.data?.error?.message ?? e?.response?.data?.message ?? 'Error al crear usuario';
+      const msg = e?.response?.data?.error?.message ?? e?.response?.data?.message ?? 'Error al guardar usuario';
       setError(Array.isArray(msg) ? msg.join(', ') : String(msg));
     } finally {
       setSubmitting(false);
     }
   }
 
-  // Determinar si mostrar el selector de empresa
-  const showCompanySelector = isSuperAdmin;
+  const showCompanySelector = isSuperAdmin && !isEdit; // en edición no permitimos cambiar de empresa
   const companyHelpText = isSuperAdmin
     ? 'Como super admin, debes elegir a qué empresa pertenece el nuevo usuario.'
     : 'Se asignará automáticamente a tu empresa actual.';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">Nuevo usuario</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Crea un usuario y asígnale roles dentro de una empresa.</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isEdit ? 'bg-blue-100' : 'bg-emerald-100'}`}>
+              {isEdit ? <Pencil className="w-5 h-5 text-blue-600" /> : <UserPlus className="w-5 h-5 text-emerald-600" />}
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">{isEdit ? 'Editar usuario' : 'Nuevo usuario'}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isEdit ? 'Modifica datos, roles o contraseña.' : 'Crea un usuario y asígnale roles dentro de una empresa.'}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100">
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {loadingEdit ? (
+          <div className="px-6 py-12 text-center text-slate-500">Cargando datos del usuario…</div>
+        ) : (
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {error && (
             <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700">
@@ -138,7 +178,6 @@ export function UserFormModal({ onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* SELECTOR DE EMPRESA — Solo visible para super_admin */}
           {showCompanySelector && (
             <div className="rounded-lg border-2 border-brand-200 bg-brand-50/50 p-4">
               <label className="block text-sm font-semibold text-brand-900 mb-2 flex items-center gap-2">
@@ -169,7 +208,14 @@ export function UserFormModal({ onClose, onSaved }: Props) {
             </div>
           )}
 
-          {!showCompanySelector && isCompanyAdmin && (
+          {isEdit && companyId && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 flex items-start gap-2">
+              <Building2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>Empresa actual: <code className="bg-white px-1 rounded">#{companyId}</code> (no se puede cambiar al editar — crea otro usuario si necesitas reasignar)</div>
+            </div>
+          )}
+
+          {!showCompanySelector && !isEdit && isCompanyAdmin && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 flex items-start gap-2">
               <Building2 className="w-4 h-4 shrink-0 mt-0.5" />
               <div>El usuario se creará en TU empresa (#{user?.company_id}). No necesitas seleccionar.</div>
@@ -186,26 +232,32 @@ export function UserFormModal({ onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email <span className="text-rose-500">*</span></label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Email {!isEdit && <span className="text-rose-500">*</span>}
+              </label>
               <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                required={!isEdit} disabled={isEdit}
                 placeholder="usuario@empresa.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
+              {isEdit && <p className="text-xs text-slate-500 mt-1">El email no se puede cambiar (es el identificador de login)</p>}
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Contraseña <span className="text-rose-500">*</span>
+              {isEdit ? 'Nueva contraseña (opcional)' : <>Contraseña <span className="text-rose-500">*</span></>}
               <span className="ml-2 text-xs text-slate-500 font-normal">(mín. 10 caracteres)</span>
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  value={password} onChange={e => setPassword(e.target.value)} required
-                  minLength={10} placeholder="Mínimo 10 caracteres"
+                  value={password} onChange={e => setPassword(e.target.value)}
+                  required={!isEdit}
+                  minLength={isEdit ? undefined : 10}
+                  placeholder={isEdit ? 'Dejar vacío = no cambiar' : 'Mínimo 10 caracteres'}
                   className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                 />
                 <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2 top-2 text-slate-400 hover:text-slate-600">
@@ -233,10 +285,9 @@ export function UserFormModal({ onClose, onSaved }: Props) {
             </label>
             <div className="space-y-2">
               {ROLES.map(r => {
-                // super_admin solo lo puede asignar otro super_admin
                 if (r.slug === 'super_admin' && !isSuperAdmin) return null;
                 return (
-                  <label key={r.slug} className={`flex items-start gap-3 px-3 py-2 border rounded-lg hover:bg-slate-50 cursor-pointer ${
+                  <label key={r.slug} className={`flex items-start gap-3 px-3 py-2 border rounded-lg hover:bg-slate-50 cursor-pointer transition ${
                     selectedRoles.includes(r.slug) ? 'border-brand-500 bg-brand-50/30' : 'border-slate-200'
                   }`}>
                     <input
@@ -259,11 +310,12 @@ export function UserFormModal({ onClose, onSaved }: Props) {
             </div>
           </div>
         </form>
+        )}
 
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 bg-slate-50 sticky bottom-0">
-          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 disabled:opacity-50">Cancelar</button>
-          <button type="button" onClick={handleSubmit as any} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium shadow-sm">
-            {submitting ? 'Creando…' : 'Crear usuario'}
+          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={handleSubmit as any} disabled={submitting || loadingEdit} className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium shadow-sm">
+            {submitting ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear usuario'}
           </button>
         </div>
       </div>

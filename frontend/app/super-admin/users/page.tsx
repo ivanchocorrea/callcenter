@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Users, Building2, Search, Filter, Eye, ShieldAlert } from 'lucide-react';
+import { Users, Building2, Search, Filter, Eye, ShieldAlert, Pencil } from 'lucide-react';
 import { ConfirmDialog, Toast } from '@/components/shared/Dialog';
+import { UserFormModal } from '@/app/admin/users/UserFormModal';
 
 interface UserRow {
   id: number;
@@ -34,6 +35,7 @@ export default function AllUsersPage() {
   const [filterRole, setFilterRole] = useState<string>('all');
   const [impersonateTarget, setImpersonateTarget] = useState<UserRow | null>(null);
   const [impersonateLoading, setImpersonateLoading] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string; variant: 'success' | 'danger' | 'info' } | null>(null);
 
   async function executeImpersonate() {
@@ -208,15 +210,24 @@ export default function AllUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setImpersonateTarget(u)}
-                      title="Ver la plataforma como este usuario (abre en nueva pestaña)"
-                      disabled={u.status !== 'active'}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 bg-slate-100 hover:bg-amber-100 hover:text-amber-700 transition opacity-30 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Ver como
-                    </button>
+                    <div className="inline-flex items-center gap-1 opacity-30 group-hover:opacity-100 transition">
+                      <button
+                        onClick={() => setEditId(u.id)}
+                        title="Editar datos del usuario"
+                        className="p-1.5 rounded text-slate-500 hover:bg-blue-100 hover:text-blue-700"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setImpersonateTarget(u)}
+                        title="Ver la plataforma como este usuario (abre en nueva pestaña)"
+                        disabled={u.status !== 'active'}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 bg-slate-100 hover:bg-amber-100 hover:text-amber-700 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Ver como
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -263,6 +274,14 @@ export default function AllUsersPage() {
         variant={toast?.variant ?? 'info'}
         onClose={() => setToast(null)}
       />
+
+      {editId !== null && (
+        <UserFormModal
+          editId={editId}
+          onClose={() => setEditId(null)}
+          onSaved={() => { setEditId(null); reload(); }}
+        />
+      )}
     </AppShell>
   );
 }

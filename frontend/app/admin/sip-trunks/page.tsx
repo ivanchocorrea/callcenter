@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, PhoneCall, AlertCircle, CheckCircle2, Settings2 } from 'lucide-react';
 import { TrunkFormModal } from './TrunkFormModal';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Trunk {
   id: number;
@@ -66,12 +67,19 @@ export default function SipTrunksPage() {
   }
 
   async function deleteTrunk(id: number) {
-    if (!confirm('¿Eliminar troncal? Esta acción es irreversible.')) return;
+    const ok = await confirmAsync({
+      title: 'Eliminar troncal SIP',
+      message: <>Vas a eliminar esta troncal. Las llamadas que la usen dejarán de funcionar inmediatamente.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/sip-trunks/${id}`);
+      toastShow('Troncal eliminada', 'success');
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
+      toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger');
     }
   }
 

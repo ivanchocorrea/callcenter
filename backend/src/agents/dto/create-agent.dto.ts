@@ -41,3 +41,41 @@ export class CreateAgentDto {
   @IsBoolean()
   auto_answer?: boolean;
 }
+
+export class UpdateAgentDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  extension?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  display_name?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  department?: string | null;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  skill_level?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  can_be_recorded?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  auto_answer?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+}
+

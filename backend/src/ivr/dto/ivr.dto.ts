@@ -115,4 +115,9 @@ export class CreateIvrAudioDto {
   @IsOptional()
   @IsString()
   transcription?: string;
+
+  @ApiProperty({ required: false, description: 'Duración en segundos calculada en cliente' })
+  @IsOptional()
+  @IsInt()
+  duration_seconds?: number;
 }

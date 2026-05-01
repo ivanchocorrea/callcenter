@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Tag, Trash2 } from 'lucide-react';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Disposition {
   id: number;
@@ -30,9 +31,22 @@ export default function DispositionsPage() {
   useEffect(() => { reload(); }, []);
 
   async function deleteItem(id: number, label: string) {
-    if (!confirm(`¿Eliminar tipificación "${label}"?`)) return;
-    await api.delete(`/dispositions/${id}`);
-    reload();
+    const ok = await confirmAsync({
+      title: 'Eliminar tipificación',
+      message: <>Vas a eliminar <strong>"{label}"</strong>. Las llamadas anteriores con esta tipificación se conservan.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/dispositions/${id}`);
+      toastShow(`Tipificación "${label}" eliminada`, 'success');
+      reload();
+    } catch (e: any) {
+      toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger');
+      return;
+    }
+    return;
   }
 
   return (

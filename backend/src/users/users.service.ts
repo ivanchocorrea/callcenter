@@ -39,10 +39,11 @@ export class UsersService {
     `);
   }
 
-  async findById(id: number): Promise<User> {
+  async findById(id: number): Promise<User & { roles?: string[] }> {
     const u = await this.repo.findOne({ where: { id } });
     if (!u) throw new NotFoundException(`Usuario ${id} no encontrado`);
-    return u;
+    const roles = await this.listRoles(Number(u.id));
+    return Object.assign(u, { roles });
   }
 
   async create(dto: CreateUserDto, currentCompanyId: number | null): Promise<User> {

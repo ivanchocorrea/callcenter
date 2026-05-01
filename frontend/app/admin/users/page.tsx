@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, Users as UsersIcon, KeyRound, Lock, Unlock, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Users as UsersIcon, KeyRound, Lock, Unlock, Trash2, AlertCircle, Pencil } from 'lucide-react';
 import { UserFormModal } from './UserFormModal';
 import { ConfirmDialog, PromptDialog, Toast, DialogIcons } from '@/components/shared/Dialog';
 
@@ -33,6 +33,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
@@ -154,6 +155,13 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1 opacity-30 group-hover:opacity-100 transition">
                       <button
+                        onClick={() => setEditId(u.id)}
+                        disabled={busyId === u.id}
+                        title="Editar datos"
+                        className="p-1.5 rounded text-slate-500 hover:bg-blue-100 hover:text-blue-700 disabled:opacity-50">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => setPwUser(u)}
                         disabled={busyId === u.id}
                         title="Cambiar contraseña"
@@ -201,6 +209,7 @@ export default function UsersPage() {
       </div>
 
       {openCreate && <UserFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
+      {editId !== null && <UserFormModal editId={editId} onClose={() => setEditId(null)} onSaved={reload} />}
 
       <ConfirmDialog
         open={confirmAction?.kind === 'status'}

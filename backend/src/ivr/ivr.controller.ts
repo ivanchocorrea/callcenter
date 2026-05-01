@@ -5,13 +5,17 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Req,
+  Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import * as fs from 'fs';
 import { IvrService } from './ivr.service';
 import { CreateIvrMenuDto, UpdateIvrMenuDto, CreateIvrAudioDto } from './dto/ivr.dto';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -75,5 +79,39 @@ export class IvrController {
   @RequirePermissions('ivr.manage')
   async removeAudio(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.ivr.deleteAudio(id, req.scopedCompanyId);
+  }
+
+  /**
+   * Sirve el archivo de audio para el reproductor HTML5 (preview en panel).
+   * Streamea el archivo con el Content-Type correcto.
+   */
+  @Get('audios/:id/file')
+  @RequirePermissions('ivr.view')
+  async serveAudio(@Param('id', ParseIntPipe) id: number, @Req() req: any, @Res() res: Response) {
+    const audio = await this.ivr.getAudio(id, req.scopedCompanyId);
+    if (!audio.filePath || !fs.existsSync(audio.filePath)) {
+      throw new NotFoundException('Archivo de audio no encontrado en disco');
+    }
+    const mimeMap: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+    };
+    res.setHeader('Content-Type', mimeMap[audio.format] ?? 'audio/mpeg');
+    res.setHeader('Content-Disposition', `inline; filename="${audio.name}.${audio.format}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    const stream = fs.createReadStream(audio.filePath);
+    stream.pipe(res);
+  }
+
+  /** Actualiza metadatos del audio (ej. duration_seconds calculada en el cliente al subir) */
+  @Patch('audios/:id')
+  @RequirePermissions('ivr.manage')
+  updateAudio(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { duration_seconds?: number; transcription?: string; name?: string; purpose?: string },
+    @Req() req: any,
+  ) {
+    return this.ivr.updateAudio(id, req.scopedCompanyId, body);
   }
 }

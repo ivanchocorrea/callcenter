@@ -139,6 +139,7 @@ export class IvrService {
       filePath,
       format: dto.format,
       fileSizeBytes: buffer.length,
+      durationSeconds: (dto as any).duration_seconds ?? null,
       purpose: dto.purpose,
       transcription: dto.transcription ?? null,
       createdBy: userId,
@@ -154,6 +155,27 @@ export class IvrService {
       try { fs.unlinkSync(a.filePath); } catch { /* ignore */ }
     }
     await this.audioRepo.remove(a);
+  }
+
+  /** Devuelve el audio incluido el filePath (interno, no exponer al cliente). */
+  async getAudio(id: number, companyId: number): Promise<IvrAudioFile> {
+    const a = await this.audioRepo.findOne({ where: { id, companyId } });
+    if (!a) throw new NotFoundException(`Audio ${id} no encontrado`);
+    return a;
+  }
+
+  async updateAudio(
+    id: number,
+    companyId: number,
+    patch: { duration_seconds?: number; transcription?: string; name?: string; purpose?: string },
+  ): Promise<IvrAudioFile> {
+    const a = await this.audioRepo.findOne({ where: { id, companyId } });
+    if (!a) throw new NotFoundException();
+    if (patch.duration_seconds !== undefined) a.durationSeconds = patch.duration_seconds;
+    if (patch.transcription !== undefined) a.transcription = patch.transcription;
+    if (patch.name !== undefined) a.name = patch.name;
+    if (patch.purpose !== undefined) a.purpose = patch.purpose;
+    return this.audioRepo.save(a);
   }
 
   /** Devuelve la URI ARI media para reproducir. Asterisk soporta `sound:` para

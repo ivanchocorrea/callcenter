@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { AuthProvider } from '@/lib/auth/auth-context';
 import { SipProvider } from '@/lib/webrtc/sip-context';
 import { RealtimeProvider } from '@/lib/realtime/realtime-context';
+import { DialogHost } from '@/lib/ui/dialog-helper';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -19,7 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={client}>
       <AuthProvider>
         <RealtimeProvider>
-          <SipProvider>{children}</SipProvider>
+          <SipProvider>
+            {children}
+            <DialogHost />
+          </SipProvider>
         </RealtimeProvider>
       </AuthProvider>
     </QueryClientProvider>

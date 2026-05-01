@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, HeadphonesIcon, Trash2, Pause, Play, KeyRound } from 'lucide-react';
+import { Plus, HeadphonesIcon, Trash2, Pause, Play, KeyRound, Pencil } from 'lucide-react';
 import { AgentFormModal } from './AgentFormModal';
 import { ConfirmDialog, Toast, DialogIcons } from '@/components/shared/Dialog';
 
@@ -29,6 +29,7 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
@@ -133,6 +134,13 @@ export default function AgentsPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1 opacity-30 group-hover:opacity-100 transition">
                         <button
+                          onClick={() => setEditId(a.id)}
+                          disabled={busyId === a.id}
+                          title="Editar datos del agente"
+                          className="p-1.5 rounded text-slate-500 hover:bg-blue-100 hover:text-blue-700 disabled:opacity-50">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => setConfirmAction({ kind: 'regen-secret', agent: a })}
                           disabled={busyId === a.id}
                           title="Regenerar contraseña SIP"
@@ -173,6 +181,7 @@ export default function AgentsPage() {
         </div>
       </div>
       {openCreate && <AgentFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
+      {editId !== null && <AgentFormModal editId={editId} onClose={() => setEditId(null)} onSaved={reload} />}
 
       <ConfirmDialog
         open={confirmAction?.kind === 'suspend'}

@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, KeyRound, Trash2 } from 'lucide-react';
 import { AiProviderFormModal } from './AiProviderFormModal';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Provider {
   id: number;
@@ -33,12 +34,19 @@ export default function AiProvidersPage() {
   useEffect(() => { reload(); }, []);
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`¿Eliminar el proveedor "${name}"? Esta acción es irreversible.`)) return;
+    const ok = await confirmAsync({
+      title: 'Eliminar proveedor IA',
+      message: <>Vas a eliminar el proveedor <strong>"{name}"</strong>. Los bots que lo usen dejarán de funcionar.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/ai/providers/${id}`);
+      toastShow(`Proveedor "${name}" eliminado`, 'success');
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
+      toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger');
     }
   }
 

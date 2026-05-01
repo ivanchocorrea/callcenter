@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Shield, AlertTriangle, Ban, Eye, RefreshCw } from 'lucide-react';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Overview {
   active_bans: number;
@@ -49,14 +50,28 @@ export default function SecurityPage() {
   useEffect(() => { reload(); const i = setInterval(reload, 30000); return () => clearInterval(i); }, [statusFilter]);
 
   async function unban(id: number, ip: string) {
-    if (!confirm(`¿Desbanear ${ip}?`)) return;
-    await api.delete(`/security/bans/${id}`);
+    const ok = await confirmAsync({
+      title: 'Desbanear IP',
+      message: <>Vas a quitar el ban de <code className="bg-slate-100 px-1 rounded">{ip}</code>. Si está atacando, será baneada otra vez automáticamente.</>,
+      variant: 'warning',
+      confirmText: 'Sí, desbanear',
+    });
+    if (!ok) return;
+    try { await api.delete(`/security/bans/${id}`); toastShow(`${ip} desbaneada`, 'success'); }
+    catch (e: any) { toastShow(e?.response?.data?.error?.message ?? 'Error', 'danger'); return; }
     reload();
   }
 
   async function whitelist(ip: string) {
-    if (!confirm(`¿Agregar ${ip} a whitelist (no se va a banear más)?`)) return;
-    await api.post('/security/whitelist', { ip });
+    const ok = await confirmAsync({
+      title: 'Agregar a whitelist',
+      message: <>Vas a agregar <code className="bg-slate-100 px-1 rounded">{ip}</code> a la whitelist permanente. <strong>Nunca</strong> será baneada por fail2ban.</>,
+      variant: 'warning',
+      confirmText: 'Sí, agregar a whitelist',
+    });
+    if (!ok) return;
+    try { await api.post('/security/whitelist', { ip }); toastShow(`${ip} en whitelist`, 'success'); }
+    catch (e: any) { toastShow(e?.response?.data?.error?.message ?? 'Error', 'danger'); return; }
     reload();
   }
 

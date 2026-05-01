@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { Plus, Clock, Calendar, Trash2 } from 'lucide-react';
+import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 const DAYS = [
   { v: 'mon', l: 'Lunes' },
@@ -48,14 +49,28 @@ export default function SchedulesPage() {
   useEffect(() => { reload(); }, []);
 
   async function deleteHours(id: number, name: string) {
-    if (!confirm(`¿Eliminar horario "${name}"?`)) return;
-    await api.delete(`/schedules/business-hours/${id}`);
+    const ok = await confirmAsync({
+      title: 'Eliminar horario',
+      message: <>Vas a eliminar el horario <strong>"{name}"</strong>. Los IVRs/colas que lo usan dejarán de tener restricción horaria.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
+    try { await api.delete(`/schedules/business-hours/${id}`); toastShow(`Horario "${name}" eliminado`, 'success'); }
+    catch (e: any) { toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger'); return; }
     reload();
   }
 
   async function deleteHoliday(id: number, name: string) {
-    if (!confirm(`¿Eliminar feriado "${name}"?`)) return;
-    await api.delete(`/schedules/holidays/${id}`);
+    const ok = await confirmAsync({
+      title: 'Eliminar feriado',
+      message: <>Vas a eliminar el feriado <strong>"{name}"</strong>.</>,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+    });
+    if (!ok) return;
+    try { await api.delete(`/schedules/holidays/${id}`); toastShow(`Feriado "${name}" eliminado`, 'success'); }
+    catch (e: any) { toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger'); return; }
     reload();
   }
 

@@ -5,6 +5,7 @@ import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { ArrowLeft, Phone, Mail, MapPin, Building2, Star, Plus, Calendar, MessageSquare, FileText, Pin } from 'lucide-react';
 import Link from 'next/link';
+import { toastShow } from '@/lib/ui/dialog-helper';
 
 interface Customer {
   id: number;
@@ -87,7 +88,7 @@ export default function CustomerDetailPage(props: { params: Promise<{ id: string
       setNewNote('');
       loadAll();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al guardar nota');
+      toastShow(e?.response?.data?.error?.message ?? 'Error al guardar nota', 'danger');
     } finally {
       setSavingNote(false);
     }
