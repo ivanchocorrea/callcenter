@@ -21,31 +21,31 @@ export class SipTrunk {
   @Column({ name: 'company_id', type: 'bigint' })
   companyId!: number;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   name!: string;
 
-  @Column({ length: 255 })
+  @Column({ type: 'varchar', length: 255 })
   host!: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   proxy!: string | null;
 
   @Column({ type: 'int', default: 5060 })
   port!: number;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   username!: string;
 
-  @Column({ name: 'auth_username', length: 150, nullable: true })
+  @Column({ name: 'auth_username', type: 'varchar', length: 150, nullable: true })
   authUsername!: string | null;
 
   @Column({ name: 'password_encrypted', type: 'text' })
   passwordEncrypted!: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   domain!: string | null;
 
-  @Column({ name: 'caller_id', length: 100, nullable: true })
+  @Column({ name: 'caller_id', type: 'varchar', length: 100, nullable: true })
   callerId!: string | null;
 
   @Column({ type: 'enum', enum: ['udp', 'tcp', 'tls'], default: 'udp' })

@@ -20,16 +20,16 @@ export class Agent {
   @Column({ name: 'user_id', type: 'bigint' })
   userId!: number;
 
-  @Column({ length: 20 })
+  @Column({ type: 'varchar', length: 20 })
   extension!: string;
 
   @Column({ name: 'sip_secret_encrypted', type: 'text' })
   sipSecretEncrypted!: string;
 
-  @Column({ name: 'display_name', length: 150 })
+  @Column({ name: 'display_name', type: 'varchar', length: 150 })
   displayName!: string;
 
-  @Column({ length: 120, nullable: true })
+  @Column({ type: 'varchar', length: 120, nullable: true })
   department!: string | null;
 
   @Column({ name: 'skill_level', type: 'tinyint', default: 1 })

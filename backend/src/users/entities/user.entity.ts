@@ -21,16 +21,16 @@ export class User {
   @Column({ name: 'company_id', type: 'bigint', nullable: true })
   companyId!: number | null;
 
-  @Column({ length: 180 })
+  @Column({ type: 'varchar', length: 180 })
   email!: string;
 
   @Column({ name: 'email_verified_at', type: 'timestamp', nullable: true })
   emailVerifiedAt!: Date | null;
 
-  @Column({ name: 'password_hash', length: 255 })
+  @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash!: string;
 
-  @Column({ name: 'full_name', length: 180 })
+  @Column({ name: 'full_name', type: 'varchar', length: 180 })
   fullName!: string;
 
   @Column({ name: 'display_name', type: 'varchar', length: 120, nullable: true })

@@ -9,10 +9,10 @@ export class Queue {
   @Column({ name: 'company_id', type: 'bigint' })
   companyId!: number;
 
-  @Column({ length: 80 })
+  @Column({ type: 'varchar', length: 80 })
   slug!: string;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   name!: string;
 
   @Column({ type: 'text', nullable: true })

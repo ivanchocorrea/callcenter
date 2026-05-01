@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS quality_forms (
     slug VARCHAR(80) NOT NULL,
     name VARCHAR(150) NOT NULL,
     description TEXT NULL,
-    schema JSON NOT NULL,                      -- definición de criterios y ponderaciones
+    `schema` JSON NOT NULL,                      -- definición de criterios y ponderaciones
     max_score DECIMAL(8,2) NOT NULL DEFAULT 100,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

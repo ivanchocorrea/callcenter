@@ -12,10 +12,10 @@ export class IvrOption {
   @Column({ name: 'ivr_menu_id', type: 'bigint' })
   ivrMenuId!: number;
 
-  @Column({ name: 'dtmf_key', length: 4 })
+  @Column({ name: 'dtmf_key', type: 'varchar', length: 4 })
   dtmfKey!: string;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   label!: string | null;
 
   @Column({
@@ -28,7 +28,7 @@ export class IvrOption {
   @Column({ name: 'destination_id', type: 'bigint', nullable: true })
   destinationId!: number | null;
 
-  @Column({ name: 'destination_value', length: 255, nullable: true })
+  @Column({ name: 'destination_value', type: 'varchar', length: 255, nullable: true })
   destinationValue!: string | null;
 
   @Column({ name: 'is_active', default: true })

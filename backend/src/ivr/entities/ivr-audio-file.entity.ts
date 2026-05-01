@@ -9,10 +9,10 @@ export class IvrAudioFile {
   @Column({ name: 'company_id', type: 'bigint' })
   companyId!: number;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150 })
   name!: string;
 
-  @Column({ name: 'file_path', length: 500 })
+  @Column({ name: 'file_path', type: 'varchar', length: 500 })
   filePath!: string;
 
   @Column({ name: 'storage_provider_id', type: 'bigint', nullable: true })
@@ -24,7 +24,7 @@ export class IvrAudioFile {
   @Column({ name: 'file_size_bytes', type: 'bigint', nullable: true })
   fileSizeBytes!: number | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   format!: string | null;
 
   @Column({ name: 'sample_rate', type: 'int', nullable: true })

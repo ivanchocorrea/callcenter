@@ -26,22 +26,22 @@ export class Call {
   @Column({ name: 'company_id', type: 'bigint' })
   companyId!: number;
 
-  @Column({ name: 'asterisk_uniqueid', length: 80, nullable: true })
+  @Column({ name: 'asterisk_uniqueid', type: 'varchar', length: 80, nullable: true })
   asteriskUniqueid!: string | null;
 
-  @Column({ name: 'asterisk_linkedid', length: 80, nullable: true })
+  @Column({ name: 'asterisk_linkedid', type: 'varchar', length: 80, nullable: true })
   asteriskLinkedid!: string | null;
 
   @Column({ type: 'enum', enum: ['inbound', 'outbound', 'internal'] })
   direction!: CallDirection;
 
-  @Column({ name: 'from_number', length: 60, nullable: true })
+  @Column({ name: 'from_number', type: 'varchar', length: 60, nullable: true })
   fromNumber!: string | null;
 
-  @Column({ name: 'to_number', length: 60, nullable: true })
+  @Column({ name: 'to_number', type: 'varchar', length: 60, nullable: true })
   toNumber!: string | null;
 
-  @Column({ name: 'did_number', length: 60, nullable: true })
+  @Column({ name: 'did_number', type: 'varchar', length: 60, nullable: true })
   didNumber!: string | null;
 
   @Column({ name: 'trunk_id', type: 'bigint', nullable: true })
@@ -115,7 +115,7 @@ export class Call {
   @Column({ name: 'ai_summary', type: 'text', nullable: true })
   aiSummary!: string | null;
 
-  @Column({ name: 'ai_sentiment', length: 20, nullable: true })
+  @Column({ name: 'ai_sentiment', type: 'varchar', length: 20, nullable: true })
   aiSentiment!: string | null;
 
   @Column({ name: 'ai_tags', type: 'json', nullable: true })
