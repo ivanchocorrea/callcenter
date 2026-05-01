@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Users, Building2, Search, Filter } from 'lucide-react';
+import { Users, Building2, Search, Filter, Eye, ShieldAlert } from 'lucide-react';
+import { ConfirmDialog, Toast } from '@/components/shared/Dialog';
 
 interface UserRow {
   id: number;
@@ -31,6 +32,27 @@ export default function AllUsersPage() {
   const [search, setSearch] = useState('');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [impersonateTarget, setImpersonateTarget] = useState<UserRow | null>(null);
+  const [impersonateLoading, setImpersonateLoading] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; variant: 'success' | 'danger' | 'info' } | null>(null);
+
+  async function executeImpersonate() {
+    if (!impersonateTarget) return;
+    setImpersonateLoading(true);
+    try {
+      const res = await api.post(`/auth/impersonate/${impersonateTarget.id}`, {});
+      const data = unwrap<{ access_token: string; refresh_token: string; target: any }>(res);
+      // Abre nueva pestaña con la sesión del usuario destino
+      const url = `/impersonate?access=${encodeURIComponent(data.access_token)}&refresh=${encodeURIComponent(data.refresh_token)}&target=${encodeURIComponent(impersonateTarget.email)}`;
+      window.open(url, '_blank', 'noopener');
+      setToast({ msg: `Abierta nueva pestaña como ${impersonateTarget.email}`, variant: 'success' });
+      setImpersonateTarget(null);
+    } catch (e: any) {
+      setToast({ msg: e?.response?.data?.error?.message ?? 'Error al iniciar impersonation', variant: 'danger' });
+    } finally {
+      setImpersonateLoading(false);
+    }
+  }
 
   function reload() {
     setLoading(true);
@@ -138,18 +160,19 @@ export default function AllUsersPage() {
                 <th className="text-left px-4 py-3 font-medium">Roles</th>
                 <th className="text-left px-4 py-3 font-medium">Estado</th>
                 <th className="text-left px-4 py-3 font-medium">Creado</th>
+                <th className="text-right px-4 py-3 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Cargando…</td></tr>}
-              {error && <tr><td colSpan={5} className="px-4 py-8 text-center text-rose-600">{error}</td></tr>}
+              {loading && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Cargando…</td></tr>}
+              {error && <tr><td colSpan={6} className="px-4 py-8 text-center text-rose-600">{error}</td></tr>}
               {!loading && !error && filtered.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-500">
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                   <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />Sin usuarios.
                 </td></tr>
               )}
               {filtered.map(u => (
-                <tr key={u.id} className="hover:bg-slate-50">
+                <tr key={u.id} className="group hover:bg-slate-50 transition">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{u.fullName}</div>
                     <div className="text-xs text-slate-500">{u.email}</div>
@@ -184,6 +207,17 @@ export default function AllUsersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => setImpersonateTarget(u)}
+                      title="Ver la plataforma como este usuario (abre en nueva pestaña)"
+                      disabled={u.status !== 'active'}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 bg-slate-100 hover:bg-amber-100 hover:text-amber-700 transition opacity-30 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Ver como
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -197,10 +231,38 @@ export default function AllUsersPage() {
             <ul className="list-disc pl-5 mt-1 space-y-0.5">
               <li><code className="bg-white px-1 rounded">/super-admin/users</code> (esta vista) — VER usuarios de TODAS las empresas</li>
               <li><code className="bg-white px-1 rounded">/admin/users</code> — CREAR/editar usuarios de UNA empresa específica</li>
+              <li><strong>Botón "Ver como"</strong> — abre nueva pestaña con la sesión del usuario, sin perder la tuya. Sesión limitada a 30 min y auditada.</li>
             </ul>
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={impersonateTarget !== null}
+        title="Ver plataforma como este usuario"
+        message={impersonateTarget && (
+          <>
+            Vas a abrir una nueva pestaña con la sesión de <strong>{impersonateTarget.email}</strong> ({impersonateTarget.companyName ?? 'sin empresa'}).
+            <div className="mt-3 text-xs space-y-1.5 bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800">
+              <div className="flex gap-2"><ShieldAlert className="w-4 h-4 shrink-0" /><span>Tu sesión actual de super_admin <strong>NO se cierra</strong> — sigue activa en esta pestaña.</span></div>
+              <div className="flex gap-2"><ShieldAlert className="w-4 h-4 shrink-0" /><span>La sesión de impersonation dura <strong>30 minutos</strong> máximo.</span></div>
+              <div className="flex gap-2"><ShieldAlert className="w-4 h-4 shrink-0" /><span>Toda actividad queda <strong>auditada</strong> con tu nombre.</span></div>
+            </div>
+          </>
+        )}
+        variant="warning"
+        confirmText="Sí, abrir como este usuario"
+        onConfirm={executeImpersonate}
+        onCancel={() => !impersonateLoading && setImpersonateTarget(null)}
+        loading={impersonateLoading}
+      />
+
+      <Toast
+        open={toast !== null}
+        message={toast?.msg ?? ''}
+        variant={toast?.variant ?? 'info'}
+        onClose={() => setToast(null)}
+      />
     </AppShell>
   );
 }

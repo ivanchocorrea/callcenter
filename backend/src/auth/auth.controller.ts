@@ -5,6 +5,8 @@ import {
   Headers,
   HttpCode,
   Ip,
+  Param,
+  ParseIntPipe,
   Post,
   Req,
 } from '@nestjs/common';
@@ -48,5 +50,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Información del usuario autenticado' })
   me(@CurrentUser() user: AuthenticatedUser) {
     return user;
+  }
+
+  @ApiBearerAuth()
+  @Post('impersonate/:userId')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Super admin obtiene tokens de otro usuario para verlo como él' })
+  impersonate(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('userId', ParseIntPipe) targetId: number,
+    @Ip() ip: string,
+    @Headers('user-agent') ua: string,
+  ) {
+    const actorId = (actor as any).userId ?? (actor as any).id ?? (actor as any).sub;
+    const roles = (actor as any).roles ?? [];
+    return this.auth.impersonate(actorId, roles, targetId, { ip, userAgent: ua });
   }
 }

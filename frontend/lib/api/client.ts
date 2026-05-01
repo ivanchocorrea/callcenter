@@ -14,32 +14,56 @@ let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let companyContextId: number | null = null;
 
+/**
+ * Una pestaña queda marcada como "impersonating" si tiene `cc_impersonating='1'` en sessionStorage.
+ * Esa pestaña usa SOLO sessionStorage (no localStorage), de modo que es totalmente independiente
+ * de la sesión principal del super_admin en otras pestañas.
+ */
+function isImpersonatingTab(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem('cc_impersonating') === '1';
+}
+
+function storage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return isImpersonatingTab() ? sessionStorage : localStorage;
+}
+
 export const tokens = {
   set(access: string | null, refresh: string | null) {
     accessToken = access;
     refreshToken = refresh;
-    if (typeof window !== 'undefined') {
-      if (access) localStorage.setItem('cc_access', access);
-      else localStorage.removeItem('cc_access');
-      if (refresh) localStorage.setItem('cc_refresh', refresh);
-      else localStorage.removeItem('cc_refresh');
-    }
+    const s = storage();
+    if (!s) return;
+    if (access) s.setItem('cc_access', access); else s.removeItem('cc_access');
+    if (refresh) s.setItem('cc_refresh', refresh); else s.removeItem('cc_refresh');
   },
   loadFromStorage() {
-    if (typeof window === 'undefined') return;
-    accessToken = localStorage.getItem('cc_access');
-    refreshToken = localStorage.getItem('cc_refresh');
+    const s = storage();
+    if (!s) return;
+    accessToken = s.getItem('cc_access');
+    refreshToken = s.getItem('cc_refresh');
   },
   getAccess: () => accessToken,
   getRefresh: () => refreshToken,
   setCompanyContext(id: number | null) {
     companyContextId = id;
-    if (typeof window !== 'undefined') {
-      if (id) localStorage.setItem('cc_company', String(id));
-      else localStorage.removeItem('cc_company');
-    }
+    const s = storage();
+    if (!s) return;
+    if (id) s.setItem('cc_company', String(id));
+    else s.removeItem('cc_company');
   },
   getCompanyContext: () => companyContextId,
+  /** Marca esta pestaña como impersonation y guarda los tokens en sessionStorage */
+  startImpersonation(access: string, refresh: string) {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem('cc_impersonating', '1');
+    accessToken = access;
+    refreshToken = refresh;
+    sessionStorage.setItem('cc_access', access);
+    sessionStorage.setItem('cc_refresh', refresh);
+  },
+  isImpersonating: () => isImpersonatingTab(),
 };
 
 api.interceptors.request.use(config => {

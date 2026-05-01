@@ -197,6 +197,74 @@ export class AuthService implements OnModuleInit {
     await this.tokenRepo.update({ tokenHash: hash }, { revokedAt: new Date() });
   }
 
+  /**
+   * Impersonation: super_admin obtiene tokens de un usuario para verlo como él.
+   * Solo super_admin puede usar este método. Los tokens son cortos (15min) para seguridad.
+   * Audita la acción.
+   */
+  async impersonate(actingUserId: number, actingRoles: string[], targetUserId: number, meta: { ip?: string; userAgent?: string }) {
+    if (!actingRoles.includes('super_admin')) {
+      throw new ForbiddenException('Solo super_admin puede impersonar usuarios');
+    }
+    if (actingUserId === targetUserId) {
+      throw new ForbiddenException('No puedes impersonarte a ti mismo');
+    }
+    const target = await this.userRepo.findOne({ where: { id: targetUserId } });
+    if (!target) throw new UnauthorizedException('Usuario destino no encontrado');
+    if (target.status !== 'active') throw new ForbiddenException('El usuario destino no está activo');
+
+    const { roles, permissions } = await this.loadAuthorization(target.id);
+    const payload: JwtPayload & { impersonatedBy?: number } = {
+      sub: Number(target.id),
+      email: target.email,
+      companyId: target.companyId ? Number(target.companyId) : null,
+      roles,
+      permissions,
+      impersonatedBy: actingUserId,
+    };
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: this.config.get<string>('jwt.accessSecret'),
+      expiresIn: '30m', // sesión corta de impersonation
+    });
+    const refreshToken = this.encryption.generateRandomToken(48);
+    const refreshHash = this.encryption.hashToken(refreshToken);
+    const expiresAt = new Date(Date.now() + 30 * 60_000); // 30 min
+    await this.tokenRepo.save(
+      this.tokenRepo.create({
+        userId: Number(target.id),
+        tokenHash: refreshHash,
+        userAgent: `[IMPERSONATED by user#${actingUserId}] ${meta.userAgent ?? ''}`,
+        ipAddress: meta.ip ?? null,
+        expiresAt,
+      }),
+    );
+
+    // Audit log
+    try {
+      await this.ds.query(
+        `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+         VALUES (?, 'IMPERSONATE', 'user', ?, ?, NOW())`,
+        [actingUserId, targetUserId, JSON.stringify({ ip: meta.ip, ua: meta.userAgent })],
+      );
+    } catch {
+      this.logger.warn(`No se pudo auditar impersonation user#${actingUserId} -> user#${targetUserId}`);
+    }
+    this.logger.warn(`IMPERSONATION: user#${actingUserId} → user#${targetUserId} (${target.email})`);
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 30 * 60,
+      target: {
+        id: Number(target.id),
+        email: target.email,
+        full_name: target.fullName,
+        company_id: target.companyId ? Number(target.companyId) : null,
+        roles,
+      },
+    };
+  }
+
   async loadAuthorization(userId: number): Promise<{ roles: string[]; permissions: string[] }> {
     const rolesRows = await this.ds.query(
       `SELECT r.slug FROM user_roles ur INNER JOIN roles r ON ur.role_id=r.id WHERE ur.user_id=?`,

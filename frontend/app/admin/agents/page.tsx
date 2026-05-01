@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, HeadphonesIcon, Pencil, Trash2, Pause, Play, KeyRound } from 'lucide-react';
+import { Plus, HeadphonesIcon, Trash2, Pause, Play, KeyRound } from 'lucide-react';
 import { AgentFormModal } from './AgentFormModal';
+import { ConfirmDialog, Toast, DialogIcons } from '@/components/shared/Dialog';
 
 interface Agent {
   id: number;
@@ -16,12 +17,24 @@ interface Agent {
   is_active?: boolean;
 }
 
+type ConfirmAction =
+  | { kind: 'suspend'; agent: Agent }
+  | { kind: 'activate'; agent: Agent }
+  | { kind: 'delete'; agent: Agent }
+  | { kind: 'regen-secret'; agent: Agent }
+  | null;
+
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toast, setToast] = useState<{ msg: React.ReactNode; variant: 'success' | 'danger' | 'info' } | null>(null);
+  const [newSecret, setNewSecret] = useState<{ name: string; secret: string } | null>(null);
 
   function reload() {
     setLoading(true);
@@ -32,49 +45,35 @@ export default function AgentsPage() {
   }
   useEffect(() => { reload(); }, []);
 
-  async function suspendAgent(id: number, name: string) {
-    if (!confirm(`¿Suspender al agente "${name}"? Quedará inactivo y no podrá atender llamadas.`)) return;
-    setBusyId(id);
+  async function executeAction() {
+    if (!confirmAction) return;
+    const { kind, agent } = confirmAction;
+    setActionLoading(true);
+    setBusyId(agent.id);
     try {
-      await api.patch(`/agents/${id}`, { is_active: false });
+      if (kind === 'suspend') {
+        await api.patch(`/agents/${agent.id}`, { is_active: false });
+        setToast({ msg: `Agente "${agent.display_name}" suspendido`, variant: 'success' });
+      } else if (kind === 'activate') {
+        await api.patch(`/agents/${agent.id}`, { is_active: true });
+        setToast({ msg: `Agente "${agent.display_name}" activado`, variant: 'success' });
+      } else if (kind === 'delete') {
+        await api.delete(`/agents/${agent.id}`);
+        setToast({ msg: `Agente "${agent.display_name}" eliminado`, variant: 'success' });
+      } else if (kind === 'regen-secret') {
+        const res = await api.post(`/agents/${agent.id}/regenerate-secret`, {});
+        const data = unwrap<{ sip_secret: string }>(res);
+        setNewSecret({ name: agent.display_name, secret: data.sip_secret });
+      }
+      setConfirmAction(null);
       reload();
     } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al suspender');
-    } finally { setBusyId(null); }
-  }
-
-  async function activateAgent(id: number) {
-    setBusyId(id);
-    try {
-      await api.patch(`/agents/${id}`, { is_active: true });
-      reload();
-    } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al activar');
-    } finally { setBusyId(null); }
-  }
-
-  async function deleteAgent(id: number, name: string) {
-    if (!confirm(`⚠️ ¿ELIMINAR permanentemente al agente "${name}"?\n\nEsto NO elimina al usuario, solo su perfil de agente. Sus llamadas históricas se conservan.`)) return;
-    setBusyId(id);
-    try {
-      await api.delete(`/agents/${id}`);
-      reload();
-    } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Error al eliminar');
-    } finally { setBusyId(null); }
-  }
-
-  async function regenerateSecret(id: number, name: string) {
-    if (!confirm(`Generar NUEVA contraseña SIP para "${name}"?\n\n⚠️ El softphone actual del agente dejará de funcionar hasta que se actualice con la nueva.`)) return;
-    setBusyId(id);
-    try {
-      const res = await api.post(`/agents/${id}/regenerate-secret`, {});
-      const data = unwrap<{ sip_secret: string }>(res);
-      alert(`✅ Nueva contraseña SIP:\n\n${data.sip_secret}\n\n📋 Cópiala y guárdala — no la verás de nuevo.`);
-      reload();
-    } catch (e: any) {
-      alert(e?.response?.data?.error?.message ?? 'Endpoint no disponible aún. Recrea el agente para nuevo secret.');
-    } finally { setBusyId(null); }
+      const msg = e?.response?.data?.error?.message ?? 'Error en la operación';
+      setToast({ msg, variant: 'danger' });
+    } finally {
+      setActionLoading(false);
+      setBusyId(null);
+    }
   }
 
   return (
@@ -134,7 +133,7 @@ export default function AgentsPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1 opacity-30 group-hover:opacity-100 transition">
                         <button
-                          onClick={() => regenerateSecret(a.id, a.display_name)}
+                          onClick={() => setConfirmAction({ kind: 'regen-secret', agent: a })}
                           disabled={busyId === a.id}
                           title="Regenerar contraseña SIP"
                           className="p-1.5 rounded text-slate-500 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50">
@@ -142,7 +141,7 @@ export default function AgentsPage() {
                         </button>
                         {isInactive ? (
                           <button
-                            onClick={() => activateAgent(a.id)}
+                            onClick={() => setConfirmAction({ kind: 'activate', agent: a })}
                             disabled={busyId === a.id}
                             title="Activar"
                             className="p-1.5 rounded text-slate-500 hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50">
@@ -150,7 +149,7 @@ export default function AgentsPage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => suspendAgent(a.id, a.display_name)}
+                            onClick={() => setConfirmAction({ kind: 'suspend', agent: a })}
                             disabled={busyId === a.id}
                             title="Suspender"
                             className="p-1.5 rounded text-slate-500 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50">
@@ -158,7 +157,7 @@ export default function AgentsPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => deleteAgent(a.id, a.display_name)}
+                          onClick={() => setConfirmAction({ kind: 'delete', agent: a })}
                           disabled={busyId === a.id}
                           title="Eliminar"
                           className="p-1.5 rounded text-slate-500 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50">
@@ -174,6 +173,98 @@ export default function AgentsPage() {
         </div>
       </div>
       {openCreate && <AgentFormModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'suspend'}
+        title="Suspender agente"
+        message={confirmAction?.kind === 'suspend' ? <>Vas a suspender a <strong>{confirmAction.agent.display_name}</strong>. No podrá atender llamadas hasta que lo reactives.</> : ''}
+        variant="warning"
+        icon={DialogIcons.Lock}
+        confirmText="Sí, suspender"
+        onConfirm={executeAction}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'activate'}
+        title="Activar agente"
+        message={confirmAction?.kind === 'activate' ? <>Vas a reactivar a <strong>{confirmAction.agent.display_name}</strong>. Podrá iniciar sesión y atender llamadas.</> : ''}
+        variant="success"
+        icon={DialogIcons.Unlock}
+        confirmText="Sí, activar"
+        onConfirm={executeAction}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'delete'}
+        title="Eliminar agente"
+        message={confirmAction?.kind === 'delete' ? (
+          <>
+            Vas a eliminar al agente <strong>{confirmAction.agent.display_name}</strong>.
+            <br /><span className="text-xs text-slate-500 mt-1 block">El usuario NO se elimina, solo su perfil de agente. Las llamadas históricas se conservan.</span>
+          </>
+        ) : ''}
+        variant="danger"
+        icon={DialogIcons.Trash}
+        confirmText="Sí, eliminar"
+        onConfirm={executeAction}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.kind === 'regen-secret'}
+        title="Regenerar contraseña SIP"
+        message={confirmAction?.kind === 'regen-secret' ? (
+          <>
+            Vas a generar una NUEVA contraseña SIP para <strong>{confirmAction.agent.display_name}</strong>.
+            <br /><span className="text-xs text-amber-600 mt-2 block">El softphone actual del agente dejará de funcionar hasta actualizar con la nueva contraseña.</span>
+          </>
+        ) : ''}
+        variant="warning"
+        icon={DialogIcons.Key}
+        confirmText="Sí, generar nueva"
+        onConfirm={executeAction}
+        onCancel={() => !actionLoading && setConfirmAction(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={newSecret !== null}
+        title="Nueva contraseña SIP generada"
+        message={newSecret ? (
+          <div>
+            <p className="mb-3">Contraseña para <strong>{newSecret.name}</strong>:</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-slate-900 text-emerald-300 px-3 py-2 rounded-lg font-mono text-sm select-all break-all">{newSecret.secret}</code>
+              <button
+                onClick={() => { navigator.clipboard.writeText(newSecret.secret); setToast({ msg: 'Copiado al portapapeles', variant: 'success' }); }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700">
+                Copiar
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-amber-700 bg-amber-50 p-2 rounded">
+              ⚠️ Guarda esta contraseña ahora. No la verás de nuevo.
+            </p>
+          </div>
+        ) : ''}
+        variant="success"
+        icon={DialogIcons.Key}
+        confirmText="Listo, ya la guardé"
+        cancelText="Cerrar"
+        onConfirm={() => setNewSecret(null)}
+        onCancel={() => setNewSecret(null)}
+      />
+
+      <Toast
+        open={toast !== null}
+        message={toast?.msg ?? ''}
+        variant={toast?.variant ?? 'info'}
+        onClose={() => setToast(null)}
+      />
     </AppShell>
   );
 }

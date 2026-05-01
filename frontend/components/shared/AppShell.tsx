@@ -1,12 +1,14 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRealtime } from '@/lib/realtime/realtime-context';
 import { useSip } from '@/lib/webrtc/sip-context';
 import { IncomingCallPopup } from '@/components/agent/IncomingCallPopup';
+import { tokens } from '@/lib/api/client';
+import { ShieldAlert } from 'lucide-react';
 import {
   LayoutDashboard,
   PhoneIncoming,
@@ -144,10 +146,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sip = useSip();
   const router = useRouter();
   const pathname = usePathname();
+  const [impersonating, setImpersonating] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [user, loading, router]);
+
+  useEffect(() => {
+    setImpersonating(tokens.isImpersonating());
+  }, [user]);
+
+  function endImpersonation() {
+    if (typeof window === 'undefined') return;
+    sessionStorage.clear();
+    window.close(); // intenta cerrar la pestaña
+    // Si window.close no funciona (no fue abierta por script), redirige
+    setTimeout(() => { window.location.href = 'about:blank'; }, 200);
+  }
 
   // Iniciar SIP automáticamente para agentes
   useEffect(() => {
@@ -165,7 +180,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   const items = NAV_BY_ROLE[role];
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      {impersonating && (
+        <div className="bg-gradient-to-r from-amber-500 to-rose-500 text-white px-4 py-2 flex items-center justify-between shadow-md z-20">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <ShieldAlert className="w-4 h-4" />
+            <span>
+              Modo impersonation activo — viendo como <strong>{user?.email}</strong>
+              {user?.company_id ? ` (Empresa #${user.company_id})` : ''}
+            </span>
+          </div>
+          <button
+            onClick={endImpersonation}
+            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-semibold backdrop-blur-sm transition"
+          >
+            Salir de impersonation
+          </button>
+        </div>
+      )}
+    <div className="flex flex-1 min-h-0">
       <aside className="w-64 shrink-0 bg-slate-900 text-slate-100 flex flex-col">
         <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
           <div className="p-1.5 rounded-md bg-brand-500/20"><HeadphonesIcon className="w-5 h-5 text-brand-300" /></div>
@@ -233,6 +266,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="p-6">{children}</div>
       </main>
       <IncomingCallPopup />
+    </div>
     </div>
   );
 }
