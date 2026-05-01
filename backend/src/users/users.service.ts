@@ -22,6 +22,23 @@ export class UsersService {
     return this.repo.find({ where: { companyId }, order: { createdAt: 'DESC' } });
   }
 
+  /** Lista TODOS los usuarios con info de empresa + roles (para super_admin global view). */
+  async listAll(): Promise<unknown[]> {
+    return this.ds.query(`
+      SELECT
+        u.id, u.email, u.full_name AS fullName, u.status, u.created_at AS createdAt,
+        u.company_id AS companyId, c.display_name AS companyName, c.slug AS companySlug,
+        GROUP_CONCAT(DISTINCT r.slug) AS roles
+      FROM users u
+      LEFT JOIN companies c ON c.id = u.company_id
+      LEFT JOIN user_roles ur ON ur.user_id = u.id
+      LEFT JOIN roles r ON r.id = ur.role_id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+      LIMIT 500
+    `);
+  }
+
   async findById(id: number): Promise<User> {
     const u = await this.repo.findOne({ where: { id } });
     if (!u) throw new NotFoundException(`Usuario ${id} no encontrado`);

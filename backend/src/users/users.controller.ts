@@ -23,7 +23,16 @@ export class UsersController {
   @Get()
   @RequirePermissions('users.view')
   list(@Req() req: any) {
+    // Si super_admin sin empresa asignada en JWT → null = ver TODOS
+    // Si tiene company_id → filtrar SOLO por esa empresa
     return this.users.list(req.scopedCompanyId ?? null);
+  }
+
+  @Get('all')
+  @RequirePermissions('companies.view')
+  listAll() {
+    // Super admin: lista TODOS los usuarios de TODAS las empresas con info de empresa
+    return this.users.listAll();
   }
 
   @Get(':id')

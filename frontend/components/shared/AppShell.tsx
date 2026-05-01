@@ -47,6 +47,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
   super_admin: [
     { href: '/super-admin', label: '🌐 Dashboard SaaS', icon: LayoutDashboard },
     { href: '/super-admin/companies', label: '🏢 Empresas', icon: Building2 },
+    { href: '/super-admin/users', label: '👥 Todos los usuarios', icon: Users },
     { href: '/super-admin/plans', label: '💳 Planes', icon: CreditCard },
     { href: '/super-admin/audit', label: '🛡️ Auditoría', icon: ShieldCheck },
     { href: '/super-admin/security', label: '🔒 Seguridad (fail2ban)', icon: ShieldCheck },
