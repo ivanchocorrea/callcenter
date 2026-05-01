@@ -1,0 +1,20 @@
+# =====================================================================
+#  Call Center NODOE — Override de producción
+#  Uso:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+#  Lo que hace:
+#  - Bind backend/frontend solo a 127.0.0.1 (Nginx del sistema hace proxy)
+#  - Asterisk con network_mode: host (para SIP/RTP sin NAT)
+#  - Sin exponer MySQL/Redis al exterior
+# =====================================================================
+
+services:
+
+  backend:
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"

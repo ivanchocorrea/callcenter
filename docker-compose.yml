@@ -130,9 +130,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://api.somoscallcenter.com
-        NEXT_PUBLIC_WS_URL: wss://api.somoscallcenter.com
-        NEXT_PUBLIC_SIP_WSS_URL: wss://sip.somoscallcenter.com/ws
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.somoscallcenter.com}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://app.somoscallcenter.com}
+        NEXT_PUBLIC_SIP_WSS_URL: ${NEXT_PUBLIC_SIP_WSS_URL:-wss://app.somoscallcenter.com:8089/ws}
     container_name: cc-frontend
     restart: unless-stopped
     env_file:

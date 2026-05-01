@@ -114,17 +114,28 @@ export class SipTrunksService {
     });
     const saved = await this.repo.save(trunk);
 
-    await this.realtime.upsertTrunk(saved, dto.password);
+    // Sync con Asterisk realtime (no crashea si Asterisk no está disponible)
+    try {
+      await this.realtime.upsertTrunk(saved, dto.password);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo sincronizar trunk con Asterisk: ${err?.message ?? err}. Trunk guardado en BD, sincroniza después desde /admin/asterisk.`);
+    }
 
-    await this.audit.log({
-      companyId,
-      userId: actor?.userId ?? null,
-      actorEmail: actor?.email ?? null,
-      action: 'sip_trunk.created',
-      resourceType: 'sip_trunk',
-      resourceId: saved.id,
-      metadata: { name: saved.name, host: saved.host },
-    });
+    // Audit log (no crashea si falla)
+    try {
+      await this.audit.log({
+        companyId,
+        userId: actor?.userId ?? null,
+        actorEmail: actor?.email ?? null,
+        action: 'sip_trunk.created',
+        resourceType: 'sip_trunk',
+        resourceId: saved.id,
+        metadata: { name: saved.name, host: saved.host },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Audit log falló: ${err?.message ?? err}`);
+    }
+
     return this.toPublic(saved);
   }
 
@@ -162,35 +173,45 @@ export class SipTrunksService {
 
     const saved = await this.repo.save(t);
 
-    // Reaplicar config a Asterisk (con password en plano si vino, sino lo descifra)
-    const passwordForAsterisk = plainPassword ?? this.encryption.decrypt(saved.passwordEncrypted);
-    await this.realtime.upsertTrunk(saved, passwordForAsterisk);
+    // Reaplicar config a Asterisk (no crashea si Asterisk no está disponible)
+    try {
+      const passwordForAsterisk = plainPassword ?? this.encryption.decrypt(saved.passwordEncrypted);
+      await this.realtime.upsertTrunk(saved, passwordForAsterisk);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo sincronizar trunk con Asterisk: ${err?.message ?? err}`);
+    }
 
-    await this.audit.log({
-      companyId,
-      userId: actor?.userId ?? null,
-      actorEmail: actor?.email ?? null,
-      action: 'sip_trunk.updated',
-      resourceType: 'sip_trunk',
-      resourceId: saved.id,
-      metadata: { changes: Object.keys(dto) },
-    });
+    try {
+      await this.audit.log({
+        companyId,
+        userId: actor?.userId ?? null,
+        actorEmail: actor?.email ?? null,
+        action: 'sip_trunk.updated',
+        resourceType: 'sip_trunk',
+        resourceId: saved.id,
+        metadata: { changes: Object.keys(dto) },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Audit log falló: ${err?.message ?? err}`);
+    }
     return this.toPublic(saved);
   }
 
   async remove(id: number, companyId: number, actor?: { userId?: number; email?: string }): Promise<void> {
     const t = await this.repo.findOne({ where: { id, companyId } });
     if (!t) throw new NotFoundException(`Troncal SIP ${id} no encontrada`);
-    await this.realtime.deleteTrunk(t);
+    try { await this.realtime.deleteTrunk(t); } catch (err: any) { this.logger.warn(`Realtime delete falló: ${err?.message}`); }
     await this.repo.remove(t);
-    await this.audit.log({
-      companyId,
-      userId: actor?.userId ?? null,
-      actorEmail: actor?.email ?? null,
-      action: 'sip_trunk.deleted',
-      resourceType: 'sip_trunk',
-      resourceId: id,
-    });
+    try {
+      await this.audit.log({
+        companyId,
+        userId: actor?.userId ?? null,
+        actorEmail: actor?.email ?? null,
+        action: 'sip_trunk.deleted',
+        resourceType: 'sip_trunk',
+        resourceId: id,
+      });
+    } catch (err: any) { this.logger.warn(`Audit log falló: ${err?.message}`); }
   }
 
   // ---------------------------------------------------------------- TEST
