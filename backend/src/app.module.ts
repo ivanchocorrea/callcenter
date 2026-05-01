@@ -73,6 +73,9 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
 // Schedules (FASE 18)
 import { SchedulesModule } from './schedules/schedules.module';
 
+// WhatsApp (FASE 19)
+import { WhatsappModule } from './whatsapp/whatsapp.module';
+
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CompanyScopeGuard } from './common/guards/company-scope.guard';
@@ -180,6 +183,9 @@ import { CompanyScopeGuard } from './common/guards/company-scope.guard';
 
     // Schedules (horarios + holidays)
     SchedulesModule,
+
+    // WhatsApp Business
+    WhatsappModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
