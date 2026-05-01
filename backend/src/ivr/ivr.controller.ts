@@ -97,8 +97,9 @@ export class IvrController {
       wav: 'audio/wav',
       ogg: 'audio/ogg',
     };
-    res.setHeader('Content-Type', mimeMap[audio.format] ?? 'audio/mpeg');
-    res.setHeader('Content-Disposition', `inline; filename="${audio.name}.${audio.format}"`);
+    const fmt = audio.format ?? 'mp3';
+    res.setHeader('Content-Type', mimeMap[fmt] ?? 'audio/mpeg');
+    res.setHeader('Content-Disposition', `inline; filename="${audio.name}.${fmt}"`);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     const stream = fs.createReadStream(audio.filePath);
     stream.pipe(res);
