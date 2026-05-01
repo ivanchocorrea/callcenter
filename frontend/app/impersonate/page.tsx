@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { tokens } from '@/lib/api/client';
 import { ShieldAlert } from 'lucide-react';
 
-export default function ImpersonatePage() {
+function ImpersonateInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,6 @@ export default function ImpersonatePage() {
   useEffect(() => {
     const access = params.get('access');
     const refresh = params.get('refresh');
-    const target = params.get('target') ?? 'usuario';
 
     if (!access || !refresh) {
       setError('Faltan tokens en la URL. Vuelve a iniciar la impersonación desde super-admin.');
@@ -26,7 +25,6 @@ export default function ImpersonatePage() {
     // Limpia la URL (no queremos que el access_token quede en el historial)
     window.history.replaceState({}, '', '/');
 
-    // Pequeño delay para que el banner sea visible antes del redirect
     const t = setTimeout(() => {
       window.location.href = '/';
     }, 1500);
@@ -57,5 +55,17 @@ export default function ImpersonatePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ImpersonatePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-amber-50 p-6">
+        <div className="text-amber-700">Cargando…</div>
+      </div>
+    }>
+      <ImpersonateInner />
+    </Suspense>
   );
 }
