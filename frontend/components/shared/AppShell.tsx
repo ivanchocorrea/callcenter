@@ -49,6 +49,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/super-admin/companies', label: '🏢 Empresas', icon: Building2 },
     { href: '/super-admin/plans', label: '💳 Planes', icon: CreditCard },
     { href: '/super-admin/audit', label: '🛡️ Auditoría', icon: ShieldCheck },
+    { href: '/super-admin/security', label: '🔒 Seguridad (fail2ban)', icon: ShieldCheck },
     { href: '/super-admin/monitoring', label: '📡 Monitoreo', icon: Activity },
     // ── Acceso a vistas de empresa (para configurar/probar) ──
     { href: '/admin', label: '── Vista Empresa ──', icon: LayoutDashboard },

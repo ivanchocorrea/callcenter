@@ -76,6 +76,9 @@ import { SchedulesModule } from './schedules/schedules.module';
 // WhatsApp (FASE 19)
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 
+// Security (fail2ban dashboard)
+import { SecurityModule } from './security/security.module';
+
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CompanyScopeGuard } from './common/guards/company-scope.guard';
@@ -186,6 +189,9 @@ import { CompanyScopeGuard } from './common/guards/company-scope.guard';
 
     // WhatsApp Business
     WhatsappModule,
+
+    // Security dashboard (fail2ban)
+    SecurityModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
