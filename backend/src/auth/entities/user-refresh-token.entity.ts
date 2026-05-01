@@ -10,13 +10,13 @@ export class UserRefreshToken {
   @Column({ name: 'user_id', type: 'bigint' })
   userId!: number;
 
-  @Column({ name: 'token_hash', length: 255 })
+  @Column({ name: 'token_hash', type: 'varchar', length: 255 })
   tokenHash!: string;
 
-  @Column({ name: 'user_agent', length: 500, nullable: true })
+  @Column({ name: 'user_agent', type: 'varchar', length: 500, nullable: true })
   userAgent!: string | null;
 
-  @Column({ name: 'ip_address', length: 50, nullable: true })
+  @Column({ name: 'ip_address', type: 'varchar', length: 50, nullable: true })
   ipAddress!: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamp' })
