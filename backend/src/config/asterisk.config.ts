@@ -13,4 +13,5 @@ export default registerAs('asterisk', () => ({
     password: process.env.ASTERISK_ARI_PASSWORD,
     appName: process.env.ASTERISK_ARI_APP ?? 'callcenter-app',
   },
+  agentsConfPath: process.env.ASTERISK_AGENTS_CONF_PATH ?? '/etc/asterisk/agents.conf',
 }));

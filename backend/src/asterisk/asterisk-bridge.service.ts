@@ -231,6 +231,41 @@ export class AsteriskBridgeService implements OnModuleInit, OnModuleDestroy {
     await ari.channels.sendDTMF({ channelId, dtmf });
   }
 
+  /**
+   * Ejecuta un comando AMI arbitrario (Action: Command + Command: <cli>).
+   * Útil para `pjsip reload`, `pjsip show endpoints`, etc.
+   */
+  async amiCommand(command: string): Promise<{ success: boolean; output: string }> {
+    if (!this.amiConnected || !this.amiClient) {
+      return { success: false, output: 'AMI no conectado' };
+    }
+    return new Promise(resolve => {
+      this.amiClient.action(
+        { Action: 'Command', Command: command },
+        (err: any, res: any) => {
+          if (err) {
+            resolve({ success: false, output: String(err?.message ?? err) });
+          } else {
+            const output = res?.output ?? res?.message ?? JSON.stringify(res);
+            resolve({ success: true, output: typeof output === 'string' ? output : JSON.stringify(output) });
+          }
+        },
+      );
+    });
+  }
+
+  /** Lista PJSIP endpoints registrados (vía AMI). */
+  async pjsipShowEndpoints(): Promise<string> {
+    const r = await this.amiCommand('pjsip show endpoints');
+    return r.output;
+  }
+
+  /** Pjsip reload — recarga config sin reiniciar Asterisk. */
+  async pjsipReload(): Promise<boolean> {
+    const r = await this.amiCommand('pjsip reload');
+    return r.success;
+  }
+
   /** Originar una llamada saliente desde un endpoint hacia un destino. */
   async originate(opts: {
     endpoint: string;
