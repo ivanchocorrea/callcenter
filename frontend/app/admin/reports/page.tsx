@@ -97,7 +97,10 @@ export default function ReportsPage() {
 
   // Para barras CSS
   const maxAgent = Math.max(1, ...byAgent.map(a => a.calls));
-  const maxHour = Math.max(1, ...hourly.map(h => h.total));
+  // Usar la suma de las 3 series visibles (no h.total) — total puede incluir
+  // direction='internal' que no se grafica, lo que dejaria las barras escaladas
+  // a una altura "fantasma" mas grande de la real.
+  const maxHour = Math.max(1, ...hourly.map(h => h.outbound + h.inbound + h.missed));
 
   return (
     <AppShell>
@@ -179,24 +182,31 @@ export default function ReportsPage() {
               <Legend color="bg-rose-500" label="Perdidas" />
             </div>
           </div>
-          {hourly.length === 0 ? (
+          {hourly.length === 0 || hourly.every(h => (h.outbound + h.inbound + h.missed) === 0) ? (
             <p className="text-sm text-slate-500 text-center py-8">Sin datos en el período seleccionado.</p>
           ) : (
-            <div className="flex items-end gap-1 h-48">
+            <div className="flex items-stretch gap-1 h-56">
               {Array.from({ length: 24 }, (_, h) => {
                 const row = hourly.find(x => x.hour === h) ?? { total: 0, outbound: 0, inbound: 0, missed: 0 } as any;
                 const totalH = (row.outbound ?? 0) + (row.inbound ?? 0) + (row.missed ?? 0);
-                const pct = (totalH / maxHour) * 100;
+                // Altura en px (no %) calculada contra el max — evita problemas
+                // de "altura del padre = 0" en flex columns sin h-full.
+                const BAR_AREA_PX = 200;
+                const barPx = maxHour > 0 ? Math.round((totalH / maxHour) * BAR_AREA_PX) : 0;
                 return (
-                  <div key={h} className="flex-1 flex flex-col items-center gap-1 group relative">
-                    <div className="w-full flex-1 flex flex-col-reverse">
-                      <div className="w-full flex flex-col-reverse" style={{ height: `${pct}%`, minHeight: totalH > 0 ? '4px' : '0' }}>
-                        {row.missed > 0 && <div className="bg-rose-500 rounded-t" style={{ flex: row.missed }} />}
+                  <div key={h} className="flex-1 flex flex-col items-center group relative">
+                    {/* Zona de barra (altura fija) — la barra crece desde abajo */}
+                    <div className="w-full flex flex-col justify-end" style={{ height: `${BAR_AREA_PX}px` }}>
+                      <div
+                        className="w-full flex flex-col-reverse rounded-t overflow-hidden"
+                        style={{ height: `${barPx}px`, minHeight: totalH > 0 ? '4px' : '0' }}
+                      >
+                        {row.missed > 0 && <div className="bg-rose-500" style={{ flex: row.missed }} />}
                         {row.inbound > 0 && <div className="bg-emerald-500" style={{ flex: row.inbound }} />}
-                        {row.outbound > 0 && <div className="bg-blue-500 rounded-t" style={{ flex: row.outbound }} />}
+                        {row.outbound > 0 && <div className="bg-blue-500" style={{ flex: row.outbound }} />}
                       </div>
                     </div>
-                    <div className="text-[10px] text-slate-500">{h}</div>
+                    <div className="text-[10px] text-slate-500 mt-1">{h}</div>
                     {totalH > 0 && (
                       <div className="absolute bottom-full mb-1 hidden group-hover:flex flex-col items-start bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
                         <span>{h}:00 — {totalH} total</span>
