@@ -73,6 +73,7 @@ export class CallScriptsService {
       id: Number(s.id),
       name: s.name,
       content: s.content,
+      script_type: s.scriptType ?? 'both',
       sort_order: s.sortOrder,
       is_active: s.isActive,
       created_at: s.createdAt,
