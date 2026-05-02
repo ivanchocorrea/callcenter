@@ -246,8 +246,16 @@ export class AsteriskBridgeService implements OnModuleInit, OnModuleDestroy {
           if (err) {
             resolve({ success: false, output: String(err?.message ?? err) });
           } else {
-            const output = res?.output ?? res?.message ?? JSON.stringify(res);
-            resolve({ success: true, output: typeof output === 'string' ? output : JSON.stringify(output) });
+            // La lib `asterisk-manager` puede devolver `output` como string O
+            // como array de strings (una entrada por línea). Normalizamos a
+            // string con saltos de línea reales para que los consumidores
+            // (incluido el contador de endpoints) puedan parsear con split('\n').
+            const raw = res?.output ?? res?.message ?? res;
+            let output: string;
+            if (Array.isArray(raw)) output = raw.join('\n');
+            else if (typeof raw === 'string') output = raw;
+            else output = JSON.stringify(raw);
+            resolve({ success: true, output });
           }
         },
       );
@@ -260,9 +268,15 @@ export class AsteriskBridgeService implements OnModuleInit, OnModuleDestroy {
     return r.output;
   }
 
-  /** Pjsip reload — recarga config sin reiniciar Asterisk. */
+  /**
+   * Recarga la config de PJSIP sin reiniciar Asterisk.
+   * Nota: el comando CLI `pjsip reload` NO existe en algunas builds de
+   * Asterisk 18 (incluida `andrius/asterisk:18-current`). El correcto que
+   * funciona consistentemente es `module reload res_pjsip.so`, que recarga
+   * pjsip.conf y todos sus #include / #tryinclude.
+   */
   async pjsipReload(): Promise<boolean> {
-    const r = await this.amiCommand('pjsip reload');
+    const r = await this.amiCommand('module reload res_pjsip.so');
     return r.success;
   }
 
