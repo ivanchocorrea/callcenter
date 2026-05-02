@@ -44,7 +44,17 @@ export default function UsersPage() {
   function reload() {
     setLoading(true);
     api.get('/users')
-      .then(res => setUsers(unwrap<User[]>(res)))
+      .then(res => {
+        const list = unwrap<any[]>(res);
+        setUsers(list.map(u => ({
+          id: Number(u.id),
+          email: u.email ?? '',
+          full_name: u.fullName ?? u.full_name ?? '',
+          status: u.status ?? 'active',
+          roles: u.roles ?? [],
+          created_at: u.createdAt ?? u.created_at,
+        })));
+      })
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar usuarios'))
       .finally(() => setLoading(false));
   }

@@ -40,7 +40,20 @@ export default function AgentsPage() {
   function reload() {
     setLoading(true);
     api.get('/agents')
-      .then(res => setAgents(unwrap<Agent[]>(res)))
+      .then(res => {
+        const list = unwrap<any[]>(res);
+        // Backend TypeORM entrega camelCase (displayName, userId, isActive)
+        // Frontend espera snake_case — mapeamos.
+        setAgents(list.map(a => ({
+          id: Number(a.id),
+          user_id: Number(a.userId ?? a.user_id),
+          display_name: a.displayName ?? a.display_name ?? '',
+          extension: a.extension ?? '',
+          status: a.status ?? 'unknown',
+          department: a.department ?? null,
+          is_active: a.isActive ?? a.is_active,
+        })));
+      })
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar agentes'))
       .finally(() => setLoading(false));
   }
