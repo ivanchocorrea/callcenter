@@ -6,6 +6,7 @@ import {
   Phone, PhoneOff, PhoneOutgoing, PhoneIncoming, PhoneMissed, PhoneForwarded,
   Delete, Mic, MicOff, Volume2, VolumeX, Pause, Play,
   Search, ChevronLeft, ChevronRight, FileText, History, X,
+  Coffee, GraduationCap, Power, ChevronDown, Save, StickyNote,
 } from 'lucide-react';
 import { api, unwrap } from '@/lib/api/client';
 import { useSip } from '@/lib/webrtc/sip-context';
@@ -51,6 +52,27 @@ interface CustomerInfo {
   important_notes?: string | null;
   [k: string]: any;
 }
+
+interface Disposition {
+  id: number;
+  slug: string;
+  label: string;
+  parent_id: number | null;
+  is_positive?: boolean;
+  is_callback?: boolean;
+  color?: string | null;
+}
+
+type AgentStatus = 'available' | 'busy' | 'paused' | 'lunch' | 'training' | 'offline';
+
+const AGENT_STATUSES: { key: AgentStatus; label: string; icon: any; dot: string; bg: string }[] = [
+  { key: 'available', label: 'Disponible',  icon: Phone,           dot: 'bg-emerald-500', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { key: 'busy',      label: 'Ocupado',     icon: PhoneIncoming,   dot: 'bg-amber-500',   bg: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { key: 'paused',    label: 'En pausa',    icon: Pause,           dot: 'bg-slate-400',   bg: 'bg-slate-50 text-slate-700 border-slate-200' },
+  { key: 'lunch',     label: 'Almuerzo',    icon: Coffee,          dot: 'bg-orange-500',  bg: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { key: 'training',  label: 'Capacitación',icon: GraduationCap,   dot: 'bg-indigo-500',  bg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { key: 'offline',   label: 'Offline',     icon: Power,           dot: 'bg-slate-700',   bg: 'bg-slate-100 text-slate-700 border-slate-300' },
+];
 
 const KEYS = [
   ['1', '2', '3'],
@@ -100,6 +122,17 @@ export default function DialerPage() {
 
   // Datos del cliente que está llamando (lookup por teléfono)
   const [incomingCustomer, setIncomingCustomer] = useState<CustomerInfo | null>(null);
+
+  // Estado del agente (Disponible, Ocupado, etc) — dropdown
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>('offline');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+
+  // Notas y tipificación de la llamada activa
+  const [callNotes, setCallNotes] = useState('');
+  const [dispositionId, setDispositionId] = useState<number | null>(null);
+  const [dispositions, setDispositions] = useState<Disposition[]>([]);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
 
   // ----------------- Cargar historial paginado -----------------
   async function loadHistory(p = page, q = search) {
@@ -157,12 +190,57 @@ export default function DialerPage() {
     } catch { setIncomingCustomer(null); }
   }
 
-  useEffect(() => { loadHistory(1, ''); loadScripts(); loadAgentSettings(); loadQueue(); }, []);
-  // Refresca la cola cada 8 segundos
+  async function loadDispositions() {
+    try {
+      const res = await api.get('/dispositions');
+      setDispositions(unwrap<Disposition[]>(res));
+    } catch { /* ignore */ }
+  }
+
+  async function loadMyStatus() {
+    try {
+      const res = await api.get('/agents/me/status');
+      const s = unwrap<{ status: AgentStatus }>(res);
+      setAgentStatus(s.status);
+    } catch { /* ignore */ }
+  }
+
+  async function changeStatus(s: AgentStatus) {
+    setAgentStatus(s);
+    setStatusMenuOpen(false);
+    try { await api.put('/agents/me/status', { status: s }); } catch { /* revert? */ }
+  }
+
+  async function saveNotes() {
+    if (!activeCallId || savingNotes) return;
+    setSavingNotes(true);
+    setNotesSaved(false);
+    try {
+      await api.patch(`/calls/${activeCallId}/notes`, {
+        notes: callNotes || null,
+        disposition_id: dispositionId,
+      });
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
+    } catch { /* ignore */ } finally { setSavingNotes(false); }
+  }
+
+  useEffect(() => {
+    loadHistory(1, ''); loadScripts(); loadAgentSettings(); loadQueue();
+    loadDispositions(); loadMyStatus();
+  }, []);
   useEffect(() => {
     const interval = setInterval(loadQueue, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  // Cuando termina una llamada, limpia notas para la próxima
+  useEffect(() => {
+    if (!sip.active && !sip.incoming && !activeCallId) {
+      setCallNotes('');
+      setDispositionId(null);
+    }
+  }, [sip.active, sip.incoming, activeCallId]);
   useEffect(() => { loadHistory(page, search); }, [page]);
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); loadHistory(1, search); }, 300);
@@ -236,9 +314,65 @@ export default function DialerPage() {
   const totalPages = Math.max(1, Math.ceil(total / 20));
   const activeScript = scripts.find(s => s.id === activeScriptId) ?? null;
 
+  const currentStatus = AGENT_STATUSES.find(s => s.key === agentStatus) ?? AGENT_STATUSES[5];
+  const StatusIcon = currentStatus.icon;
+
   return (
     <AppShell>
       <div className="space-y-4">
+        {/* ============ BARRA SUPERIOR: estado del agente ============ */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Mi estado</span>
+            <div className="relative">
+              <button
+                onClick={() => setStatusMenuOpen(v => !v)}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium ${currentStatus.bg}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${currentStatus.dot}`} />
+                <StatusIcon className="w-3.5 h-3.5" />
+                {currentStatus.label}
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {statusMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setStatusMenuOpen(false)} />
+                  <div className="absolute z-20 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-1 w-56">
+                    {AGENT_STATUSES.map(s => {
+                      const Icon = s.icon;
+                      const isCurrent = s.key === agentStatus;
+                      return (
+                        <button
+                          key={s.key}
+                          onClick={() => changeStatus(s.key)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition ${
+                            isCurrent ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                          <Icon className="w-4 h-4" />
+                          <span className="flex-1">{s.label}</span>
+                          {isCurrent && <span className="text-xs text-brand-600">●</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          {queuedCalls.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-medium animate-pulse">
+                {queuedCalls.length} en cola
+              </span>
+              <span className="text-slate-500 truncate max-w-xs">
+                {queuedCalls.slice(0, 3).map(c => c.from_number ?? '?').join(' · ')}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Fila superior: dialer (50%) + script (50%) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* ============ DIALER ============ */}
@@ -455,6 +589,68 @@ export default function DialerPage() {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* ============ NOTAS Y TIPIFICACIÓN (siempre visible, deshabilitado si no hay llamada) ============ */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-700">
+              <StickyNote className="w-4 h-4 text-brand-600" />
+              <span className="text-sm font-semibold">Notas y tipificación</span>
+              {!sip.active && !activeCallId && (
+                <span className="text-xs text-slate-400 ml-2">(disponible cuando esté en llamada)</span>
+              )}
+            </div>
+            {activeCallId && (
+              <button
+                onClick={saveNotes}
+                disabled={savingNotes}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 transition"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {savingNotes ? 'Guardando…' : notesSaved ? '✓ Guardado' : 'Guardar'}
+              </button>
+            )}
+          </div>
+          <div className="p-5 space-y-3">
+            <textarea
+              value={callNotes}
+              onChange={e => setCallNotes(e.target.value)}
+              placeholder="Escribe notas durante o después de la llamada…"
+              disabled={!activeCallId}
+              className="w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400 transition"
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Tipificación</label>
+                <select
+                  value={dispositionId ?? ''}
+                  onChange={e => setDispositionId(e.target.value ? Number(e.target.value) : null)}
+                  disabled={!activeCallId}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">— Seleccionar —</option>
+                  {dispositions.filter(d => d.parent_id == null).map(d => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Resultado / sub-tipificación</label>
+                <select
+                  disabled={!activeCallId || !dispositionId}
+                  value={dispositions.find(d => d.id === dispositionId)?.parent_id ? dispositionId ?? '' : ''}
+                  onChange={e => setDispositionId(e.target.value ? Number(e.target.value) : dispositionId)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">— Sin sub-tipificación —</option>
+                  {dispositions.filter(d => d.parent_id === dispositionId).map(d => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>

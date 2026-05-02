@@ -21,11 +21,13 @@ export class DispositionsController {
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
   @Get()
-  @RequirePermissions('calls.view')
+  // Sin RequirePermissions: cualquier usuario logueado de la empresa puede
+  // listar las tipificaciones (los agentes las necesitan para tipificar
+  // sus llamadas en el dialer).
   async list(@Req() req: any) {
     if (!req.scopedCompanyId) throw new BadRequestException();
     return this.ds.query(
-      `SELECT * FROM call_dispositions WHERE company_id = ? ORDER BY parent_id IS NULL DESC, parent_id, label`,
+      `SELECT * FROM call_dispositions WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) ORDER BY parent_id IS NULL DESC, parent_id, label`,
       [req.scopedCompanyId],
     );
   }

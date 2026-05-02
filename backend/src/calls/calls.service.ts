@@ -77,6 +77,17 @@ export class CallsService {
     return c;
   }
 
+  async updateNotesAndDisposition(
+    id: number,
+    companyId: number,
+    dto: { notes?: string; disposition_id?: number | null },
+  ): Promise<Call> {
+    const c = await this.findById(id, companyId);
+    if (dto.notes !== undefined) c.notes = dto.notes || null;
+    if (dto.disposition_id !== undefined) c.dispositionId = dto.disposition_id ?? null;
+    return this.repo.save(c);
+  }
+
   async findByUniqueid(uniqueid: string): Promise<Call | null> {
     return this.repo.findOne({ where: { asteriskUniqueid: uniqueid } });
   }

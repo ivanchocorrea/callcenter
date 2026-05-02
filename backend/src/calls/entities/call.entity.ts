@@ -79,6 +79,10 @@ export class Call {
   @Column({ name: 'disposition_id', type: 'bigint', nullable: true })
   dispositionId!: number | null;
 
+  /** Notas del agente durante o después de la llamada. */
+  @Column({ type: 'text', nullable: true })
+  notes!: string | null;
+
   @Column({ name: 'is_recorded', default: false })
   isRecorded!: boolean;
 

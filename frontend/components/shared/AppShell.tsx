@@ -127,9 +127,8 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/supervisor/quality', label: 'Calidad', icon: ClipboardCheck },
   ],
   agent: [
-    { href: '/agent', label: 'Mi escritorio', icon: LayoutDashboard },
     { href: '/agent/dialer', label: 'Marcador', icon: PhoneOutgoing },
-    { href: '/agent/incoming-call', label: 'Llamada entrante', icon: PhoneIncoming },
+    { href: '/agent', label: 'Reportes', icon: LayoutDashboard },
     { href: '/agent/customers', label: 'Clientes', icon: Users },
     { href: '/agent/history', label: 'Mi historial', icon: FileText },
   ],

@@ -47,6 +47,13 @@ export class Agent {
   @Column({ name: 'is_active', default: true })
   isActive!: boolean;
 
+  /** available | busy | paused | lunch | training | offline */
+  @Column({ name: 'current_status', type: 'varchar', length: 30, default: 'offline' })
+  currentStatus!: string;
+
+  @Column({ name: 'current_status_changed_at', type: 'timestamp', nullable: true })
+  currentStatusChangedAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
