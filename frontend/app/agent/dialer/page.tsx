@@ -139,10 +139,11 @@ export default function DialerPage() {
   const [showKeypad, setShowKeypad] = useState(true);
   const [activeCallTab, setActiveCallTab] = useState<'acciones' | 'info' | 'historia'>('acciones');
 
-  // ----------------- Cargar historial paginado -----------------
+  // ----------------- Cargar historial (3 columnas, sin paginación) -----------------
   async function loadHistory(p = page, q = search) {
     try {
-      const res = await api.get('/dial/history', { params: { page: p, limit: 20, q: q || undefined } });
+      // Limit alto para tener llamadas suficientes para distribuir en las 3 columnas.
+      const res = await api.get('/dial/history', { params: { page: p, limit: 100, q: q || undefined } });
       const data = unwrap<HistoryResponse>(res);
       setRecent(data.items.map((c: any) => ({
         id: c.id,
@@ -700,13 +701,13 @@ export default function DialerPage() {
           </div>
         </div>
 
-        {/* ============ HISTORIAL ============ */}
+        {/* ============ HISTORIAL EN 3 COLUMNAS ============ */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-slate-700">
               <History className="w-4 h-4 text-brand-600" />
               <span className="text-sm font-semibold">Historial reciente</span>
-              <span className="text-xs text-slate-400">(últimos 2 días)</span>
+              <span className="text-xs text-slate-400">(últimos 2 días · {recent.length} llamadas)</span>
             </div>
             <div className="flex items-center gap-2 flex-1 max-w-md ml-auto">
               <div className="relative flex-1">
@@ -721,81 +722,34 @@ export default function DialerPage() {
             </div>
           </div>
 
-          <div className="px-2 py-2">
-            {recent.length === 0 ? (
-              <div className="px-4 py-12 text-center text-sm text-slate-500">
-                {search ? 'Sin resultados para tu búsqueda.' : 'No tienes llamadas en los últimos 2 días.'}
-              </div>
-            ) : (
-              <div>
-                {Object.entries(groupedHistory).map(([day, calls]) => (
-                  <div key={day} className="mb-2">
-                    <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50/60 border-y border-slate-100">
-                      {day}
-                    </div>
-                    <ul className="divide-y divide-slate-100">
-                      {calls.map(c => (
-                        <li key={c.id} className="px-3 py-2.5 flex items-center justify-between hover:bg-slate-50 transition">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <DirectionIcon direction={c.direction} status={c.status} />
-                            <div className="min-w-0">
-                              <div className="font-mono text-sm text-slate-800 truncate">
-                                {c.direction === 'outbound' ? c.to_number : c.from_number ?? c.to_number}
-                              </div>
-                              <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                                <span>{new Date(c.started_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
-                                <span className="text-slate-300">·</span>
-                                <CallTypeBadge direction={c.direction} status={c.status} />
-                                {c.duration_seconds != null && c.duration_seconds > 0 && (
-                                  <>
-                                    <span className="text-slate-300">·</span>
-                                    <span>{formatDuration(c.duration_seconds)}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const target = (c.direction === 'outbound' ? c.to_number : c.from_number) ?? '';
-                              if (target && !sip.active) void call(target);
-                            }}
-                            disabled={!!sip.active}
-                            className="text-xs px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium transition shrink-0 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Phone className="w-3 h-3" /> Llamar
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-3 py-3 border-t border-slate-100">
-                    <span className="text-xs text-slate-500">
-                      Página {page} de {totalPages} · {total} llamadas
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page <= 1}
-                        className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page >= totalPages}
-                        className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+            <HistoryColumn
+              title="Entrantes"
+              icon={PhoneIncoming}
+              accentColor="emerald"
+              calls={recent.filter(c => c.direction === 'inbound' && !['missed','failed','no_answer','rejected','abandoned'].includes(c.status))}
+              onCall={(target) => !sip.active && void call(target)}
+              callDisabled={!!sip.active}
+              emptyMsg={search ? 'Sin resultados.' : 'Sin llamadas entrantes recientes.'}
+            />
+            <HistoryColumn
+              title="Salientes"
+              icon={PhoneOutgoing}
+              accentColor="blue"
+              calls={recent.filter(c => c.direction === 'outbound')}
+              onCall={(target) => !sip.active && void call(target)}
+              callDisabled={!!sip.active}
+              emptyMsg={search ? 'Sin resultados.' : 'Sin llamadas salientes recientes.'}
+            />
+            <HistoryColumn
+              title="Perdidas / Abandonadas"
+              icon={PhoneMissed}
+              accentColor="rose"
+              calls={recent.filter(c => c.direction === 'inbound' && ['missed','failed','no_answer','rejected','abandoned'].includes(c.status))}
+              onCall={(target) => !sip.active && void call(target)}
+              callDisabled={!!sip.active}
+              emptyMsg={search ? 'Sin resultados.' : 'Sin llamadas perdidas. ¡Bien hecho!'}
+            />
           </div>
         </div>
       </div>
@@ -999,6 +953,98 @@ function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, on
           animation: gradient-x 3s ease infinite;
         }
       `}</style>
+    </div>
+  );
+}
+
+/** Columna del historial: agrupa llamadas por día con scroll interno. */
+function HistoryColumn({ title, icon: Icon, accentColor, calls, onCall, callDisabled, emptyMsg }: {
+  title: string;
+  icon: any;
+  accentColor: 'emerald' | 'blue' | 'rose';
+  calls: RecentCall[];
+  onCall: (target: string) => void;
+  callDisabled: boolean;
+  emptyMsg: string;
+}) {
+  const colorMap = {
+    emerald: { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'text-emerald-500' },
+    blue:    { text: 'text-blue-700',    bg: 'bg-blue-50',    border: 'border-blue-200',    icon: 'text-blue-500' },
+    rose:    { text: 'text-rose-700',    bg: 'bg-rose-50',    border: 'border-rose-200',    icon: 'text-rose-500' },
+  }[accentColor];
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, RecentCall[]> = {};
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    for (const c of calls) {
+      const d = new Date(c.started_at); d.setHours(0, 0, 0, 0);
+      let label: string;
+      if (d.getTime() === today.getTime()) label = 'Hoy';
+      else if (d.getTime() === yesterday.getTime()) label = 'Ayer';
+      else label = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(c);
+    }
+    return groups;
+  }, [calls]);
+
+  return (
+    <div className="flex flex-col">
+      {/* Header de la columna */}
+      <div className={`px-4 py-2.5 flex items-center gap-2 border-b ${colorMap.border} ${colorMap.bg}`}>
+        <Icon className={`w-4 h-4 ${colorMap.icon}`} />
+        <span className={`text-sm font-semibold ${colorMap.text}`}>{title}</span>
+        <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-white ${colorMap.text}`}>
+          {calls.length}
+        </span>
+      </div>
+
+      {/* Lista con scroll */}
+      <div className="flex-1 overflow-y-auto max-h-[420px]">
+        {calls.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs text-slate-400 italic">{emptyMsg}</div>
+        ) : (
+          Object.entries(grouped).map(([day, list]) => (
+            <div key={day}>
+              <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide bg-slate-50 sticky top-0 z-10">
+                {day}
+              </div>
+              <ul className="divide-y divide-slate-100">
+                {list.map(c => {
+                  const target = c.direction === 'outbound' ? c.to_number : (c.from_number ?? c.to_number);
+                  return (
+                    <li key={c.id} className="px-3 py-2 hover:bg-slate-50 transition group">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-sm text-slate-800 truncate">{target}</div>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <span>{new Date(c.started_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                            {c.duration_seconds != null && c.duration_seconds > 0 && (
+                              <>
+                                <span className="text-slate-300">·</span>
+                                <span className="font-mono">{formatDuration(c.duration_seconds)}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => target && onCall(target)}
+                          disabled={callDisabled}
+                          className={`opacity-0 group-hover:opacity-100 transition shrink-0 inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border ${colorMap.border} ${colorMap.bg} ${colorMap.text} hover:brightness-95 disabled:opacity-30 disabled:cursor-not-allowed`}
+                          title="Volver a marcar"
+                        >
+                          <Phone className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
