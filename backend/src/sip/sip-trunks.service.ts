@@ -217,31 +217,60 @@ export class SipTrunksService {
   // ---------------------------------------------------------------- TEST
 
   /**
-   * Envía un SIP OPTIONS al host:port de la troncal y captura la línea
-   * de respuesta. No autentica completamente (el proveedor responde 200/401/403),
-   * pero verifica conectividad y nombre de servidor.
+   * Prueba la conectividad/aliveness de una troncal SIP.
+   *
+   * Estrategia en dos pasos (algunos proveedores como Colombia RED no
+   * responden a SIP OPTIONS sin autenticar y solo aceptan REGISTER):
+   *
+   *  1) Intenta SIP OPTIONS — barato, no requiere credenciales. Si el
+   *     servidor responde (200/401/403/404/407) la troncal está viva.
+   *  2) Si OPTIONS falla con timeout, intenta SIP REGISTER (sin auth,
+   *     esperamos 401 o 200). Cualquier respuesta SIP confirma que el
+   *     servidor está vivo y aceptaría auth real para el registro.
+   *  3) Si ambos fallan, marcamos error.
    */
   async testConnection(id: number, companyId: number): Promise<SipConnectionTestResult> {
     const t = await this.repo.findOne({ where: { id, companyId } });
     if (!t) throw new NotFoundException(`Troncal SIP ${id} no encontrada`);
 
     const start = Date.now();
-    try {
-      const result =
-        t.transport === 'udp'
-          ? await this.sendOptionsUdp(t.host, t.port, t.username)
-          : await this.sendOptionsTcp(t.host, t.port, t.username);
+    const tryProbe = async (): Promise<{ code?: number; line?: string; method: string }> => {
+      try {
+        const optsResult =
+          t.transport === 'udp'
+            ? await this.sendOptionsUdp(t.host, t.port, t.username)
+            : await this.sendOptionsTcp(t.host, t.port, t.username);
+        return { ...optsResult, method: 'OPTIONS' };
+      } catch (optsErr: any) {
+        // Fallback: REGISTER (solo UDP, que es 99% de los proveedores).
+        if (t.transport === 'udp') {
+          try {
+            const regResult = await this.sendRegisterProbeUdp(t.host, t.port, t.username);
+            return { ...regResult, method: 'REGISTER' };
+          } catch (regErr: any) {
+            throw new Error(`OPTIONS: ${optsErr?.message ?? optsErr}; REGISTER: ${regErr?.message ?? regErr}`);
+          }
+        }
+        throw optsErr;
+      }
+    };
 
+    try {
+      const result = await tryProbe();
       const latencyMs = Date.now() - start;
       const ok = !!result.code && [200, 401, 403, 404, 407].includes(result.code);
 
-      // 200/401/407: el servidor está vivo; 401/407 indican que pediría auth real.
       t.status = ok ? 'active' : 'error';
       t.lastError = ok ? null : result.line ?? 'No response';
       if (ok) t.lastRegisteredAt = new Date();
       await this.repo.save(t);
 
-      return { success: ok, responseCode: result.code, responseLine: result.line, latencyMs };
+      return {
+        success: ok,
+        responseCode: result.code,
+        responseLine: result.line ? `[${result.method}] ${result.line}` : undefined,
+        latencyMs,
+      };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       t.status = 'error';
@@ -249,6 +278,67 @@ export class SipTrunksService {
       await this.repo.save(t);
       return { success: false, error: msg, latencyMs: Date.now() - start };
     }
+  }
+
+  /**
+   * Envía un REGISTER (sin auth) y devuelve la PRIMERA respuesta del
+   * servidor. Esperamos típicamente 401 Unauthorized (el servidor está
+   * vivo y exige auth) o 200 OK (raro sin auth, pero posible). Esto es
+   * un "ping" más robusto que OPTIONS para proveedores que no responden
+   * OPTIONS pero sí REGISTER (ej: Colombia RED).
+   */
+  private sendRegisterProbeUdp(host: string, port: number, username: string, timeoutMs = 4000): Promise<{ code?: number; line?: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = dgram.createSocket('udp4');
+      const branch = `z9hG4bK${randomBytes(8).toString('hex')}`;
+      const tag = randomBytes(4).toString('hex');
+      const callId = `${randomBytes(8).toString('hex')}@callcenter`;
+      const msg = [
+        `REGISTER sip:${host} SIP/2.0`,
+        `Via: SIP/2.0/UDP 0.0.0.0:0;branch=${branch};rport`,
+        `Max-Forwards: 70`,
+        `From: <sip:${username}@${host}>;tag=${tag}`,
+        `To: <sip:${username}@${host}>`,
+        `Call-ID: ${callId}`,
+        `CSeq: 1 REGISTER`,
+        `Contact: <sip:${username}@0.0.0.0>`,
+        `Expires: 60`,
+        `User-Agent: CallCenter-NODOE/0.1`,
+        `Content-Length: 0`,
+        '',
+        '',
+      ].join('\r\n');
+
+      const buf = Buffer.from(msg);
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        socket.close();
+        reject(new Error('Timeout esperando respuesta SIP a REGISTER'));
+      }, timeoutMs);
+
+      socket.on('message', message => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        const text = message.toString('utf8');
+        const firstLine = text.split('\r\n')[0] ?? '';
+        const m = /^SIP\/2\.0 (\d{3})\s*(.*)$/.exec(firstLine);
+        socket.close();
+        resolve({ code: m ? parseInt(m[1], 10) : undefined, line: firstLine });
+      });
+
+      socket.bind(0, () => {
+        socket.send(buf, 0, buf.length, port, host, err => {
+          if (err) {
+            clearTimeout(timer);
+            socket.close();
+            reject(err);
+          }
+        });
+      });
+    });
   }
 
   private sendOptionsUdp(host: string, port: number, username: string, timeoutMs = 4000): Promise<{ code?: number; line?: string }> {
