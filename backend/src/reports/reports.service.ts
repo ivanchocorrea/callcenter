@@ -27,19 +27,26 @@ export class ReportsService {
 
   async overview(companyId: number, f: ReportFilters): Promise<unknown> {
     const df = this.dateFilter('c', f);
+    const agentFilter = f.agentId ? ' AND c.agent_id = ?' : '';
+    const agentParam = f.agentId ? [f.agentId] : [];
+    // Métricas consistentes con AgentsService.myReport — los criterios
+    // de "missed", "answered", duraciones, etc. son los mismos en
+    // /agent (reporte personal) y /admin/reports (reporte global).
     const r = await this.ds.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN c.direction='inbound' THEN 1 ELSE 0 END) AS inbound,
          SUM(CASE WHEN c.direction='outbound' THEN 1 ELSE 0 END) AS outbound,
+         SUM(CASE WHEN c.direction='inbound' AND c.status NOT IN ('missed','failed','no_answer','rejected','abandoned') THEN 1 ELSE 0 END) AS inbound,
+         SUM(CASE WHEN c.direction='inbound' AND c.status IN ('missed','failed','no_answer','rejected','abandoned') THEN 1 ELSE 0 END) AS missed,
          SUM(CASE WHEN c.status='abandoned' THEN 1 ELSE 0 END) AS abandoned,
-         SUM(CASE WHEN c.status IN ('no_answer','busy','failed') THEN 1 ELSE 0 END) AS missed,
-         AVG(c.duration_seconds) AS avg_duration,
+         AVG(CASE WHEN c.direction='inbound' AND c.duration_seconds > 0 THEN c.duration_seconds END) AS avg_inbound_duration,
+         AVG(CASE WHEN c.direction='outbound' AND c.duration_seconds > 0 THEN c.duration_seconds END) AS avg_outbound_duration,
+         AVG(CASE WHEN c.duration_seconds > 0 THEN c.duration_seconds END) AS avg_duration,
          AVG(c.queue_wait_seconds) AS avg_wait,
          AVG(c.talk_seconds) AS avg_talk
        FROM calls c
-       WHERE c.company_id = ?${df.sql}`,
-      [companyId, ...df.params],
+       WHERE c.company_id = ?${df.sql}${agentFilter}`,
+      [companyId, ...df.params, ...agentParam],
     );
     return r[0];
   }
@@ -78,11 +85,19 @@ export class ReportsService {
 
   async hourlyDistribution(companyId: number, f: ReportFilters): Promise<unknown[]> {
     const df = this.dateFilter('c', f);
+    const agentFilter = f.agentId ? ' AND c.agent_id = ?' : '';
+    const agentParam = f.agentId ? [f.agentId] : [];
+    // Devuelve series por hora separadas en outbound/inbound/missed —
+    // así la gráfica puede mostrar barras apiladas por tipo.
     return this.ds.query(
-      `SELECT HOUR(c.started_at) AS hour, COUNT(*) AS total
-         FROM calls c WHERE c.company_id = ?${df.sql}
+      `SELECT HOUR(c.started_at) AS hour,
+              COUNT(*) AS total,
+              SUM(CASE WHEN c.direction='outbound' THEN 1 ELSE 0 END) AS outbound,
+              SUM(CASE WHEN c.direction='inbound' AND c.status NOT IN ('missed','failed','no_answer','rejected','abandoned') THEN 1 ELSE 0 END) AS inbound,
+              SUM(CASE WHEN c.direction='inbound' AND c.status IN ('missed','failed','no_answer','rejected','abandoned') THEN 1 ELSE 0 END) AS missed
+         FROM calls c WHERE c.company_id = ?${df.sql}${agentFilter}
          GROUP BY HOUR(c.started_at) ORDER BY hour`,
-      [companyId, ...df.params],
+      [companyId, ...df.params, ...agentParam],
     );
   }
 
