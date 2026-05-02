@@ -127,12 +127,16 @@ JWT_REFRESH_EXPIRES_IN=7d
 
 ENCRYPTION_MASTER_KEY=<tu valor generado>
 
-ASTERISK_HOST=127.0.0.1
+# El backend corre dentro de la red bridge `callcenter-net`, mientras que
+# Asterisk usa `network_mode: host`. Por eso NO sirve `127.0.0.1` (apuntaría
+# al loopback del propio contenedor backend). Usamos `host.docker.internal`
+# que el docker-compose.yml mapea al gateway del host vía `extra_hosts`.
+ASTERISK_HOST=host.docker.internal
 ASTERISK_AMI_PORT=5038
 ASTERISK_AMI_USER=admin
 ASTERISK_AMI_PASSWORD=<tu valor generado>
 
-ASTERISK_ARI_HOST=127.0.0.1
+ASTERISK_ARI_HOST=host.docker.internal
 ASTERISK_ARI_PORT=8088
 ASTERISK_ARI_USER=ariadmin
 ASTERISK_ARI_PASSWORD=<tu valor generado>
@@ -329,6 +333,34 @@ sudo ufw reload
 ```
 
 Si dice "inactive" → no hace falta.
+
+### H.1 Permitir que el backend (en red Docker) alcance AMI/ARI del Asterisk del host
+
+Asterisk corre con `network_mode: host` y escucha AMI en `5038` y ARI en `8088`.
+El backend corre en la red bridge `callcenter-net` (~`172.16.0.0/12`). Si UFW
+está activo, hay que permitir explícitamente ese tráfico — si no, las conexiones
+desde el contenedor al host se quedan en `ETIMEDOUT`:
+
+```bash
+sudo ufw allow from 172.16.0.0/12 to any port 5038 proto tcp comment 'AMI desde Docker'
+sudo ufw allow from 172.16.0.0/12 to any port 8088 proto tcp comment 'ARI desde Docker'
+sudo ufw reload
+```
+
+Verificación desde dentro del contenedor backend:
+
+```bash
+docker exec cc-backend getent hosts host.docker.internal
+docker exec cc-backend sh -c 'nc -zv host.docker.internal 5038; nc -zv host.docker.internal 8088'
+```
+
+Ambos puertos deben reportar "open". Después:
+
+```bash
+docker logs cc-backend --tail 50 | grep -iE 'ari|ami'
+# Esperamos: "ARI conectado a http://host.docker.internal:8088"
+#            "AMI conectado a host.docker.internal:5038"
+```
 
 ---
 

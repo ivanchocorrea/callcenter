@@ -226,12 +226,16 @@ JWT_REFRESH_EXPIRES_IN=7d
 
 ENCRYPTION_MASTER_KEY=<pega lo que generaste>
 
-ASTERISK_HOST=127.0.0.1
+# El backend corre dentro de la red bridge `callcenter-net`, mientras que
+# Asterisk usa `network_mode: host`. Por eso NO sirve `127.0.0.1` (apuntaría
+# al loopback del propio contenedor backend). Usamos `host.docker.internal`
+# que el docker-compose.yml mapea al gateway del host vía `extra_hosts`.
+ASTERISK_HOST=host.docker.internal
 ASTERISK_AMI_PORT=5038
 ASTERISK_AMI_USER=admin
 ASTERISK_AMI_PASSWORD=<pega lo que generaste>
 
-ASTERISK_ARI_HOST=127.0.0.1
+ASTERISK_ARI_HOST=host.docker.internal
 ASTERISK_ARI_PORT=8088
 ASTERISK_ARI_USER=ariadmin
 ASTERISK_ARI_PASSWORD=<pega lo que generaste>

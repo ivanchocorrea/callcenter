@@ -114,8 +114,17 @@ services:
       NODE_ENV: ${NODE_ENV}
     volumes:
       - recordings-data:/var/recordings
+      # Compartido con cc-asterisk: el backend escribe `agents.conf` (PJSIP
+      # endpoints de los agentes WebRTC) y Asterisk lo lee vía `#tryinclude`
+      # en pjsip.conf. Sin este bind mount, el sync de agentes no surte efecto.
+      - ./asterisk/etc:/etc/asterisk:rw
     networks:
       - callcenter-net
+    # Necesario en Linux para que `host.docker.internal` resuelva al gateway
+    # del host. El backend lo usa para alcanzar AMI/ARI cuando Asterisk corre
+    # con `network_mode: host` y por tanto NO está en `callcenter-net`.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health/live"]
       interval: 15s
@@ -163,3 +172,7 @@ services:
       - nginx-certs:/etc/letsencrypt
     networks:
       - callcenter-net
+    # Necesario para que `proxy_pass http://host.docker.internal:8088/ws`
+    # (WSS de Asterisk en host network) resuelva al gateway del host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
