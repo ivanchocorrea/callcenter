@@ -130,7 +130,6 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/agent/dialer', label: 'Marcador', icon: PhoneOutgoing },
     { href: '/agent', label: 'Reportes', icon: LayoutDashboard },
     { href: '/agent/customers', label: 'Clientes', icon: Users },
-    { href: '/agent/history', label: 'Mi historial', icon: FileText },
   ],
 };
 
