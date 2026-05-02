@@ -167,6 +167,21 @@ export class SipClient {
     });
   }
 
+  /** Cambia el volumen del audio remoto (0–1). */
+  setRemoteVolume(volume01: number): void {
+    if (this.remoteAudio) {
+      this.remoteAudio.volume = Math.max(0, Math.min(1, volume01));
+    }
+  }
+
+  /** Mute del audio remoto (toggle altavoz). Cuando es true: silencia
+   *  todo audio del otro lado para el agente. */
+  setRemoteMuted(muted: boolean): void {
+    if (this.remoteAudio) {
+      this.remoteAudio.muted = muted;
+    }
+  }
+
   async sendDtmf(tones: string): Promise<void> {
     const s = this.currentSession;
     const handler: any = s?.sessionDescriptionHandler;

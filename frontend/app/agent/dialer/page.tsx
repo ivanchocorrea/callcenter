@@ -107,9 +107,14 @@ export default function DialerPage() {
   // Settings de la empresa (puede rechazar entrantes?)
   const [agentSettings, setAgentSettings] = useState<AgentSettings>({ allow_agent_reject_inbound: true });
 
-  // Controles del dialer
-  const [volume, setVolume] = useState(80);
-  const [speakerOn, setSpeakerOn] = useState(true);
+  // Controles del dialer (sincronizados con el audio real)
+  const [volume, setVolumeState] = useState(80);
+  const [speakerOn, setSpeakerOnState] = useState(true);
+
+  // Aplica el volumen al audio real cada vez que cambia
+  useEffect(() => { sip.setVolume(volume); }, [volume, sip.active]);
+  // Aplica el toggle de altavoz al audio real
+  useEffect(() => { sip.setSpeaker(speakerOn); }, [speakerOn, sip.active]);
 
   // Transferir
   const [showTransfer, setShowTransfer] = useState(false);
@@ -136,8 +141,13 @@ export default function DialerPage() {
 
   // Duración de la llamada en vivo (segundos)
   const [callDuration, setCallDuration] = useState(0);
-  const [showKeypad, setShowKeypad] = useState(true);
+  const [showKeypad, setShowKeypad] = useState(false);
   const [activeCallTab, setActiveCallTab] = useState<'acciones' | 'info' | 'historia'>('acciones');
+
+  // Último número que el agente marcó (para mostrarlo como destino en la tarjeta
+  // de llamada activa — el remoteUri que devuelve Asterisk es el CallerID de
+  // la troncal, no el destino real, que es lo que el agente quiere ver).
+  const [lastDialedNumber, setLastDialedNumber] = useState<string | null>(null);
 
   // ----------------- Cargar historial (3 columnas, sin paginación) -----------------
   async function loadHistory(p = page, q = search) {
@@ -240,11 +250,13 @@ export default function DialerPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Cuando termina una llamada, limpia notas para la próxima
+  // Cuando termina una llamada, limpia notas y último número marcado
   useEffect(() => {
     if (!sip.active && !sip.incoming && !activeCallId) {
       setCallNotes('');
       setDispositionId(null);
+      setLastDialedNumber(null);
+      setIncomingCustomer(null);
     }
   }, [sip.active, sip.incoming, activeCallId]);
 
@@ -300,6 +312,8 @@ export default function DialerPage() {
     setError(null);
     try {
       sip.markPendingOutbound(20000);
+      setLastDialedNumber(number);  // recordamos para mostrar en la tarjeta
+      void lookupCustomer(number);  // lookup del destino para mostrar nombre si existe
       const res = await api.post('/dial', { number });
       const data = unwrap<any>(res);
       if (data?.callId) setActiveCallId(Number(data.callId));
@@ -418,33 +432,50 @@ export default function DialerPage() {
             <div className="p-4">
               {sip.active ? (
                 /* ============ TARJETA SOFTPHONE (con llamada activa) ============ */
-                <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white p-5 shadow-lg">
-                  <div className="flex items-start gap-3">
-                    <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-xl font-bold ring-2 ring-white/30">
-                      {getInitials(incomingCustomer?.name ?? sip.active.displayName ?? sip.active.remoteUri)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-lg truncate">
-                        {incomingCustomer?.name ?? sip.active.displayName ?? sip.active.remoteUri}
+                (() => {
+                  // Determinar qué mostrar como destino:
+                  // - Si es saliente (lastDialedNumber existe): el número que el agente marcó
+                  // - Si es entrante: el remoteUri (número del que llama)
+                  const isOutbound = !!lastDialedNumber;
+                  const destNumber = isOutbound ? lastDialedNumber : sip.active.remoteUri;
+                  const customerName = incomingCustomer?.name;
+                  const displayName = customerName ?? (isOutbound ? null : sip.active.displayName);
+                  const tipoLlamada = isOutbound ? 'Saliente' : 'Entrante';
+                  return (
+                    <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white p-5 shadow-lg">
+                      <div className="flex items-start gap-3">
+                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-xl font-bold ring-2 ring-white/30">
+                          {getInitials(displayName ?? destNumber)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] uppercase tracking-widest text-white/70 font-bold">
+                            {tipoLlamada}
+                          </div>
+                          <div className="font-bold text-lg truncate">
+                            {displayName ?? destNumber}
+                          </div>
+                          {displayName && (
+                            <div className="text-sm text-white/80 font-mono truncate">{destNumber}</div>
+                          )}
+                          {incomingCustomer?.is_vip && (
+                            <span className="inline-block mt-1 text-[10px] uppercase tracking-wide bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                              ⭐ VIP
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-white/70 uppercase tracking-wide">Duración</div>
+                          <div className="text-2xl font-mono font-bold tabular-nums">{formatDuration(callDuration)}</div>
+                          {sip.active.onHold && (
+                            <span className="inline-block mt-0.5 text-[10px] uppercase tracking-wide bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                              ⏸ EN ESPERA
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-sm text-white/80 font-mono truncate">{sip.active.remoteUri}</div>
-                      {incomingCustomer?.is_vip && (
-                        <span className="inline-block mt-1 text-[10px] uppercase tracking-wide bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
-                          ⭐ VIP
-                        </span>
-                      )}
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-white/70 uppercase tracking-wide">Duración</div>
-                      <div className="text-2xl font-mono font-bold tabular-nums">{formatDuration(callDuration)}</div>
-                      {sip.active.onHold && (
-                        <span className="inline-block mt-0.5 text-[10px] uppercase tracking-wide bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded font-bold">
-                          ⏸ EN ESPERA
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()
               ) : (
                 /* ============ DISPLAY + KEYPAD (sin llamada) ============ */
                 <>
@@ -487,9 +518,14 @@ export default function DialerPage() {
                   <>
                     <button
                       onClick={() => setShowKeypad(v => !v)}
-                      className="rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-slate-700 text-xs font-medium flex items-center justify-center gap-1 transition"
+                      title="Mostrar teclado para enviar tonos (ej: presione 1 en menús IVR)"
+                      className={`rounded-xl py-2.5 text-xs font-medium flex items-center justify-center gap-1 transition ${
+                        showKeypad
+                          ? 'bg-brand-100 text-brand-700 border border-brand-300'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
                     >
-                      ⚏ DTMF
+                      ⚏ Teclado
                     </button>
                     <button
                       onClick={() => sip.hangup()}
@@ -558,16 +594,17 @@ export default function DialerPage() {
                   />
                   <CtrlButton
                     icon={speakerOn ? Volume2 : VolumeX}
-                    label="Altavoz"
-                    active={speakerOn}
-                    onClick={() => setSpeakerOn(v => !v)}
+                    label={speakerOn ? 'Altavoz' : 'Silenciado'}
+                    active={!speakerOn}
+                    onClick={() => setSpeakerOnState(v => !v)}
                   />
                   <div className="flex flex-col items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
                     <Volume2 className="w-4 h-4 text-slate-600" />
                     <input
                       type="range" min={0} max={100} value={volume}
-                      onChange={e => setVolume(parseInt(e.target.value, 10))}
+                      onChange={e => setVolumeState(parseInt(e.target.value, 10))}
                       className="w-full h-1 accent-brand-600"
+                      title={`Volumen ${volume}%`}
                     />
                     <span className="text-[10px] text-slate-500">{volume}%</span>
                   </div>

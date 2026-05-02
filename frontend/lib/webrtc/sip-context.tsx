@@ -34,6 +34,10 @@ interface SipContextValue {
   toggleHold: () => Promise<void>;
   toggleMute: () => void;
   sendDtmf: (tones: string) => Promise<void>;
+  /** Volumen de audio del otro lado (0-100). Persiste entre llamadas. */
+  setVolume: (v: number) => void;
+  /** Si false, silencia el audio del otro lado para el agente (no escuchamos al cliente). */
+  setSpeaker: (on: boolean) => void;
   /**
    * Marca que el agente acaba de iniciar una llamada saliente desde el dialer.
    * El próximo INVITE entrante (que es la otra pata del click-to-call) se
@@ -163,6 +167,15 @@ export function SipProvider({ children }: { children: ReactNode }) {
     await clientRef.current?.sendDtmf(tones);
   }, []);
 
+  const setVolume = useCallback((v: number) => {
+    clientRef.current?.setRemoteVolume(Math.max(0, Math.min(100, v)) / 100);
+  }, []);
+
+  const setSpeaker = useCallback((on: boolean) => {
+    // Cuando "altavoz" está OFF, mute el remoteAudio (el agente no escucha)
+    clientRef.current?.setRemoteMuted(!on);
+  }, []);
+
   // Cleanup en logout
   useEffect(() => {
     if (!user) {
@@ -173,6 +186,7 @@ export function SipProvider({ children }: { children: ReactNode }) {
   const value: SipContextValue = {
     state, error, incoming, active,
     start, stop, dial, answer, hangup, toggleHold, toggleMute, sendDtmf,
+    setVolume, setSpeaker,
     markPendingOutbound,
   };
   return <SipCtx.Provider value={value}>{children}</SipCtx.Provider>;
