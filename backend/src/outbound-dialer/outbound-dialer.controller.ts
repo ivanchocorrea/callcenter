@@ -69,4 +69,16 @@ export class OutboundDialerController {
     if (!req.scopedCompanyId) throw new BadRequestException('company_id requerido');
     return this.dialer.queueForCompany(req.scopedCompanyId, parseInt(limit, 10));
   }
+
+  /** Llamada activa del agente actual — para tipificar entrantes recién contestadas. */
+  @Get('current')
+  @ApiOperation({ summary: 'Devuelve la llamada activa del agente (initiated/ringing/answered) en los últimos 5min' })
+  current(@CurrentUser() user: AuthenticatedUser, @Req() req: any) {
+    if (!req.scopedCompanyId) throw new BadRequestException('company_id requerido');
+    return this.dialer.currentForAgent({
+      userId: user.userId,
+      email: user.email,
+      companyId: req.scopedCompanyId,
+    });
+  }
 }

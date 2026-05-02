@@ -178,6 +178,28 @@ export class OutboundDialerService {
   }
 
   /**
+   * Llamada activa del agente AHORA — para que el dialer pueda asociar el
+   * panel de notas/tipificación a la llamada cuando el agente recibió un
+   * INVITE entrante (en cuyo caso el frontend no recibe call_id en /dial).
+   * Devuelve la llamada más reciente del agente que esté en estado activo
+   * (initiated/ringing/answered) en los últimos 5 minutos.
+   */
+  async currentForAgent(actor: DialActor): Promise<{ call_id: number } | null> {
+    const agent = await this.agents.findOne({ where: { userId: actor.userId, companyId: actor.companyId } });
+    if (!agent) return null;
+    const rows = await this.ds.query(
+      `SELECT id FROM calls
+         WHERE agent_id = ? AND company_id = ?
+           AND status IN ('initiated','ringing','answered')
+           AND started_at >= (NOW() - INTERVAL 5 MINUTE)
+         ORDER BY started_at DESC LIMIT 1`,
+      [Number(agent.id), actor.companyId],
+    );
+    if (!rows.length) return null;
+    return { call_id: Number(rows[0].id) };
+  }
+
+  /**
    * Transferencia ciega (blind transfer) de la llamada actual a un destino
    * (extensión interna o número externo). Asterisk redirige el canal al
    * contexto outbound-bridge con el nuevo destino — el dialplan decide

@@ -132,9 +132,14 @@ export default function DialerPage() {
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('offline');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
-  // Notas y tipificación de la llamada activa
+  // Notas y tipificación de la llamada activa.
+  // Separamos parent/child porque el dropdown de sub-tipificación no podía
+  // coexistir con un solo `dispositionId` (cuando se elegía child, el parent
+  // se "perdía" en el dropdown principal). Al guardar enviamos el id MÁS
+  // específico (child si hay, sino parent).
   const [callNotes, setCallNotes] = useState('');
-  const [dispositionId, setDispositionId] = useState<number | null>(null);
+  const [dispositionParentId, setDispositionParentId] = useState<number | null>(null);
+  const [dispositionChildId, setDispositionChildId] = useState<number | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
@@ -227,18 +232,33 @@ export default function DialerPage() {
     try { await api.put('/agents/me/status', { status: s }); } catch { /* revert? */ }
   }
 
-  async function saveNotes() {
+  async function saveNotes(opts: { silent?: boolean } = {}) {
     if (!activeCallId || savingNotes) return;
+    // Nada que guardar — evita request vacío al auto-guardar
+    if (!callNotes && !dispositionParentId && !dispositionChildId) return;
     setSavingNotes(true);
-    setNotesSaved(false);
+    if (!opts.silent) setNotesSaved(false);
     try {
       await api.patch(`/calls/${activeCallId}/notes`, {
         notes: callNotes || null,
-        disposition_id: dispositionId,
+        disposition_id: dispositionChildId ?? dispositionParentId,
       });
-      setNotesSaved(true);
-      setTimeout(() => setNotesSaved(false), 2500);
+      if (!opts.silent) {
+        setNotesSaved(true);
+        setTimeout(() => setNotesSaved(false), 2500);
+      }
     } catch { /* ignore */ } finally { setSavingNotes(false); }
+  }
+
+  // Resolver activeCallId también para llamadas ENTRANTES — el INVITE entrante
+  // no nos da call_id (sí en outbound vía /dial). Polleamos /dial/current
+  // mientras haya llamada SIP activa hasta que aparezca el id.
+  async function fetchCurrentCallId() {
+    try {
+      const res = await api.get('/dial/current');
+      const data = unwrap<{ call_id: number } | null>(res);
+      if (data?.call_id) setActiveCallId(Number(data.call_id));
+    } catch { /* ignore */ }
   }
 
   useEffect(() => {
@@ -250,15 +270,33 @@ export default function DialerPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Cuando termina una llamada, limpia notas y último número marcado
+  // Auto-guardar notas/tipificación cuando la llamada termina (sip.active
+  // pasó de truthy a null) — evita perder notas si el agente colgó sin
+  // hacer click en "Guardar". Después limpia el panel para la próxima.
   useEffect(() => {
-    if (!sip.active && !sip.incoming && !activeCallId) {
-      setCallNotes('');
-      setDispositionId(null);
-      setLastDialedNumber(null);
-      setIncomingCustomer(null);
+    if (!sip.active && !sip.incoming && activeCallId) {
+      void (async () => {
+        await saveNotes({ silent: true });
+        setActiveCallId(null);
+        setCallNotes('');
+        setDispositionParentId(null);
+        setDispositionChildId(null);
+        setLastDialedNumber(null);
+        setIncomingCustomer(null);
+      })();
     }
-  }, [sip.active, sip.incoming, activeCallId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sip.active, sip.incoming]);
+
+  // Cuando entra una llamada ENTRANTE y el agente está conectado (sip.active),
+  // resolvemos el call_id desde el backend. Reintenta cada 2s mientras no haya id.
+  useEffect(() => {
+    if (!sip.active || activeCallId) return;
+    void fetchCurrentCallId();
+    const interval = setInterval(fetchCurrentCallId, 2000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sip.active, activeCallId]);
 
   // Timer de duración en vivo cuando hay llamada activa
   useEffect(() => {
@@ -688,7 +726,7 @@ export default function DialerPage() {
             </div>
             {activeCallId && (
               <button
-                onClick={saveNotes}
+                onClick={() => saveNotes()}
                 disabled={savingNotes}
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 transition"
               >
@@ -709,8 +747,12 @@ export default function DialerPage() {
               <div>
                 <label className="text-xs font-medium text-slate-600 mb-1 block">Tipificación</label>
                 <select
-                  value={dispositionId ?? ''}
-                  onChange={e => setDispositionId(e.target.value ? Number(e.target.value) : null)}
+                  value={dispositionParentId ?? ''}
+                  onChange={e => {
+                    const v = e.target.value ? Number(e.target.value) : null;
+                    setDispositionParentId(v);
+                    setDispositionChildId(null); // resetea sub-tipificación al cambiar la principal
+                  }}
                   disabled={!activeCallId}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400"
                 >
@@ -723,13 +765,17 @@ export default function DialerPage() {
               <div>
                 <label className="text-xs font-medium text-slate-600 mb-1 block">Resultado / sub-tipificación</label>
                 <select
-                  disabled={!activeCallId || !dispositionId}
-                  value={dispositions.find(d => d.id === dispositionId)?.parent_id ? dispositionId ?? '' : ''}
-                  onChange={e => setDispositionId(e.target.value ? Number(e.target.value) : dispositionId)}
+                  disabled={!activeCallId || !dispositionParentId}
+                  value={dispositionChildId ?? ''}
+                  onChange={e => setDispositionChildId(e.target.value ? Number(e.target.value) : null)}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-50 disabled:text-slate-400"
                 >
-                  <option value="">— Sin sub-tipificación —</option>
-                  {dispositions.filter(d => d.parent_id === dispositionId).map(d => (
+                  <option value="">
+                    {dispositions.some(d => d.parent_id === dispositionParentId)
+                      ? '— Seleccionar sub-tipificación —'
+                      : '— Sin sub-tipificación —'}
+                  </option>
+                  {dispositions.filter(d => d.parent_id === dispositionParentId).map(d => (
                     <option key={d.id} value={d.id}>{d.label}</option>
                   ))}
                 </select>
