@@ -1,0 +1,6 @@
+# NUNCA commitear claves privadas / certificados
+*.pem
+*.key
+*.crt
+# Pero sí mantener este directorio en el repo:
+!.gitignore
