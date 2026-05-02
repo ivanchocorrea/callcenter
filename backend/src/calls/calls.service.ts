@@ -112,4 +112,48 @@ export class CallsService {
       take: limit,
     });
   }
+
+  /**
+   * Llamadas entrantes en cola/timbrando ahora mismo en la empresa.
+   * Sirve para que el agente vea qué números están esperando ser atendidos.
+   */
+  async queueForCompany(companyId: number, limit = 5): Promise<Call[]> {
+    return this.repo
+      .createQueryBuilder('c')
+      .where('c.company_id = :companyId', { companyId })
+      .andWhere('c.direction = :dir', { dir: 'inbound' })
+      .andWhere('c.status IN (:...statuses)', { statuses: ['ringing', 'queued', 'initiated'] })
+      .andWhere('c.started_at >= (NOW() - INTERVAL 30 MINUTE)')
+      .orderBy('c.started_at', 'DESC')
+      .take(limit)
+      .getMany();
+  }
+
+  /**
+   * Lista llamadas del agente para el dialer:
+   * - Solo de los últimos 2 días.
+   * - Filtrable por número (búsqueda parcial en from o to).
+   * - Paginado (page 1-based, limit por defecto 20).
+   * - Devuelve { items, total, page, limit }.
+   */
+  async listByAgentForDialer(agentId: number, companyId: number, opts: {
+    page?: number;
+    limit?: number;
+    q?: string;
+  }): Promise<{ items: Call[]; total: number; page: number; limit: number }> {
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.max(1, Math.min(100, opts.limit ?? 20));
+    const qb = this.repo.createQueryBuilder('c')
+      .where('c.agent_id = :agentId', { agentId })
+      .andWhere('c.company_id = :companyId', { companyId })
+      .andWhere('c.started_at >= (NOW() - INTERVAL 2 DAY)')
+      .orderBy('c.started_at', 'DESC');
+    if (opts.q && opts.q.trim()) {
+      const q = `%${opts.q.replace(/[%_]/g, '\\$&')}%`;
+      qb.andWhere('(c.to_number LIKE :q OR c.from_number LIKE :q)', { q });
+    }
+    const total = await qb.getCount();
+    const items = await qb.skip((page - 1) * limit).take(limit).getMany();
+    return { items, total, page, limit };
+  }
 }

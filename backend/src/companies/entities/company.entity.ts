@@ -59,6 +59,10 @@ export class Company {
   @Column({ name: 'plan_id', type: 'bigint', nullable: true })
   planId!: number | null;
 
+  /** Si false, los agentes no pueden rechazar llamadas entrantes (botón oculto en UI). */
+  @Column({ name: 'allow_agent_reject_inbound', type: 'boolean', default: true })
+  allowAgentRejectInbound!: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

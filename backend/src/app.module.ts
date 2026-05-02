@@ -30,6 +30,7 @@ import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { AgentsModule } from './agents/agents.module';
+import { CallScriptsModule } from './call-scripts/call-scripts.module';
 
 // Telefonía (Fase 3-7)
 import { SipModule } from './sip/sip.module';
@@ -144,6 +145,7 @@ import { CompanyScopeGuard } from './common/guards/company-scope.guard';
     RolesModule,
     PermissionsModule,
     AgentsModule,
+    CallScriptsModule,
 
     // Telefonía
     SipModule,

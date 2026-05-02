@@ -161,4 +161,37 @@ export class OutboundDialerService {
     if (!agent) return [];
     return this.calls.listByAgent(Number(agent.id), actor.companyId, limit);
   }
+
+  /**
+   * Versión paginada para el dialer rediseñado: últimos 2 días,
+   * filtrable por número, paginado.
+   */
+  async recentForDialer(actor: DialActor, opts: { page?: number; limit?: number; q?: string }) {
+    const agent = await this.agents.findOne({ where: { userId: actor.userId, companyId: actor.companyId } });
+    if (!agent) return { items: [], total: 0, page: 1, limit: opts.limit ?? 20 };
+    return this.calls.listByAgentForDialer(Number(agent.id), actor.companyId, opts);
+  }
+
+  /** Llamadas entrantes en cola/timbrando ahora mismo (visible a todos los agentes de la empresa). */
+  async queueForCompany(companyId: number, limit = 5) {
+    return this.calls.queueForCompany(companyId, limit);
+  }
+
+  /**
+   * Transferencia ciega (blind transfer) de la llamada actual a un destino
+   * (extensión interna o número externo). Asterisk redirige el canal al
+   * contexto outbound-bridge con el nuevo destino — el dialplan decide
+   * por troncal según el patrón.
+   */
+  async transferCall(callId: number, companyId: number, destination: string): Promise<{ success: boolean; message: string }> {
+    const call = await this.calls.findById(callId, companyId);
+    if (!call.asteriskUniqueid) {
+      throw new BadRequestException('La llamada no tiene canal asociado');
+    }
+    const dest = String(destination).replace(/[^\d*#+]/g, '');
+    if (!dest) throw new BadRequestException('Destino inválido');
+
+    const r = await this.asterisk.transferChannel(call.asteriskUniqueid, 'outbound-bridge', dest);
+    return { success: r.success, message: r.output };
+  }
 }

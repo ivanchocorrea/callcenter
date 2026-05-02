@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto, UpdateCompanyDto } from './dto/create-company.dto';
@@ -48,5 +48,25 @@ export class CompaniesController {
   @Roles('super_admin')
   activate(@Param('id', ParseIntPipe) id: number) {
     return this.companies.activate(id);
+  }
+
+  /**
+   * Settings que el panel del agente lee al cargar (lectura ABIERTA a
+   * cualquier usuario logueado de la empresa, no solo admins).
+   */
+  @Get('me/agent-settings')
+  @ApiOperation({ summary: 'Settings de UI del agente para la empresa actual' })
+  async getAgentSettings(@Req() req: any) {
+    if (!req.scopedCompanyId) throw new BadRequestException('company_id requerido');
+    return this.companies.getAgentSettings(req.scopedCompanyId);
+  }
+
+  /** Solo admins pueden cambiar los settings. */
+  @Patch('me/agent-settings')
+  @Roles('super_admin', 'company_admin')
+  @ApiOperation({ summary: 'Cambiar settings del agente (admins)' })
+  async patchAgentSettings(@Req() req: any, @Body() dto: { allow_agent_reject_inbound?: boolean }) {
+    if (!req.scopedCompanyId) throw new BadRequestException('company_id requerido');
+    return this.companies.updateAgentSettings(req.scopedCompanyId, dto);
   }
 }

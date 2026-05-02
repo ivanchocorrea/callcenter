@@ -232,6 +232,31 @@ export class AsteriskBridgeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Transferencia ciega (blind transfer): redirige un canal activo al
+   * dialplan en (context, exten, priority) y sale. El otro lado de la
+   * llamada queda continuando la nueva ruta.
+   * Usa AMI Redirect (más confiable que ARI continueInDialplan para
+   * canales bridgeados).
+   */
+  async transferChannel(channelId: string, context: string, extension: string, priority = 1): Promise<{ success: boolean; output: string }> {
+    if (!this.amiConnected || !this.amiClient) {
+      return { success: false, output: 'AMI no conectado' };
+    }
+    return new Promise(resolve => {
+      this.amiClient.action(
+        { Action: 'Redirect', Channel: channelId, Context: context, Exten: extension, Priority: priority },
+        (err: any, res: any) => {
+          if (err) {
+            resolve({ success: false, output: String(err?.message ?? err) });
+          } else {
+            resolve({ success: true, output: res?.message ?? 'Redirected' });
+          }
+        },
+      );
+    });
+  }
+
+  /**
    * Ejecuta un comando AMI arbitrario (Action: Command + Command: <cli>).
    * Útil para `pjsip reload`, `pjsip show endpoints`, etc.
    */

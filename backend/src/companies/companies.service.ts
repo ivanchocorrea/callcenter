@@ -71,4 +71,22 @@ export class CompaniesService {
     c.suspendedReason = null;
     return this.repo.save(c);
   }
+
+  /** Settings de UI del agente para la empresa. */
+  async getAgentSettings(companyId: number): Promise<{ allow_agent_reject_inbound: boolean }> {
+    const c = await this.findById(companyId);
+    return { allow_agent_reject_inbound: c.allowAgentRejectInbound ?? true };
+  }
+
+  async updateAgentSettings(
+    companyId: number,
+    dto: { allow_agent_reject_inbound?: boolean },
+  ): Promise<{ allow_agent_reject_inbound: boolean }> {
+    const c = await this.findById(companyId);
+    if (dto.allow_agent_reject_inbound !== undefined) {
+      c.allowAgentRejectInbound = dto.allow_agent_reject_inbound;
+    }
+    await this.repo.save(c);
+    return { allow_agent_reject_inbound: c.allowAgentRejectInbound };
+  }
 }
