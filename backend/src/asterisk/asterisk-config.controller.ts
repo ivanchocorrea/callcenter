@@ -25,6 +25,14 @@ export class AsteriskConfigController {
     return this.svc.syncAllAgents();
   }
 
+  @Post('sync-trunks')
+  @HttpCode(200)
+  @Roles('super_admin', 'company_admin')
+  @ApiOperation({ summary: 'Regenera el archivo PJSIP de troncales SIP y hace pjsip reload' })
+  syncTrunks() {
+    return this.svc.syncAllTrunks();
+  }
+
   @Post('reload')
   @HttpCode(200)
   @Roles('super_admin', 'company_admin')

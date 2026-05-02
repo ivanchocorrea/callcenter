@@ -14,6 +14,7 @@ import { SipTrunk } from './entities/sip-trunk.entity';
 import { CreateSipTrunkDto, UpdateSipTrunkDto } from './dto/sip-trunk.dto';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { AsteriskRealtimeService } from './asterisk-realtime.service';
+import { AsteriskConfigService } from '../asterisk/asterisk-config.service';
 import { AuditService } from '../audit/audit.service';
 
 export interface SipConnectionTestResult {
@@ -65,8 +66,22 @@ export class SipTrunksService {
     @InjectRepository(SipTrunk) private readonly repo: Repository<SipTrunk>,
     private readonly encryption: EncryptionService,
     private readonly realtime: AsteriskRealtimeService,
+    private readonly asteriskConfig: AsteriskConfigService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Regenera trunks.conf con todas las troncales y hace pjsip reload. NO crashea
+   *  si Asterisk está caído (queda como warning en log y next sync lo retoma). */
+  private async syncTrunksFile(): Promise<void> {
+    try {
+      const r = await this.asteriskConfig.syncAllTrunks();
+      if (r.warnings?.length) {
+        for (const w of r.warnings) this.logger.warn(w);
+      }
+    } catch (err: any) {
+      this.logger.warn(`syncAllTrunks falló: ${err?.message ?? err}`);
+    }
+  }
 
   // ---------------------------------------------------------------- CRUD
 
@@ -120,6 +135,10 @@ export class SipTrunksService {
     } catch (err: any) {
       this.logger.warn(`No se pudo sincronizar trunk con Asterisk: ${err?.message ?? err}. Trunk guardado en BD, sincroniza después desde /admin/asterisk.`);
     }
+
+    // Regenera trunks.conf y hace pjsip reload (esto es lo que Asterisk
+    // realmente lee — el realtime de arriba es un fallback histórico).
+    await this.syncTrunksFile();
 
     // Audit log (no crashea si falla)
     try {
@@ -181,6 +200,9 @@ export class SipTrunksService {
       this.logger.warn(`No se pudo sincronizar trunk con Asterisk: ${err?.message ?? err}`);
     }
 
+    // Regenera trunks.conf y hace pjsip reload.
+    await this.syncTrunksFile();
+
     try {
       await this.audit.log({
         companyId,
@@ -202,6 +224,10 @@ export class SipTrunksService {
     if (!t) throw new NotFoundException(`Troncal SIP ${id} no encontrada`);
     try { await this.realtime.deleteTrunk(t); } catch (err: any) { this.logger.warn(`Realtime delete falló: ${err?.message}`); }
     await this.repo.remove(t);
+
+    // Regenera trunks.conf (sin esta troncal) y hace pjsip reload.
+    await this.syncTrunksFile();
+
     try {
       await this.audit.log({
         companyId,

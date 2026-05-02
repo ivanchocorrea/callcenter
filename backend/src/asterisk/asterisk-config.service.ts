@@ -54,6 +54,11 @@ export class AsteriskConfigService {
     return this.config.get<string>('asterisk.agentsConfPath') ?? '/etc/asterisk/agents.conf';
   }
 
+  /** Path donde se escribe el archivo de troncales PJSIP. */
+  private trunksConfPath(): string {
+    return this.config.get<string>('asterisk.trunksConfPath') ?? '/etc/asterisk/trunks.conf';
+  }
+
   /**
    * Genera el archivo de agentes PJSIP desde la BD y hace `pjsip reload`.
    * Filtros: solo agentes is_active=true.
@@ -152,6 +157,162 @@ export class AsteriskConfigService {
     }
 
     return { written: agents.length, reloaded, path: filePath, warnings };
+  }
+
+  /**
+   * Genera el archivo de troncales PJSIP desde la BD y hace `pjsip reload`.
+   * Filtros: solo troncales de empresas con status='active'.
+   *
+   * Por cada troncal escribe 4-5 secciones PJSIP en /etc/asterisk/trunks.conf:
+   *   - [trunk_<id>]         type=endpoint
+   *   - [trunk_<id>-auth]    type=auth (con username/password en claro)
+   *   - [trunk_<id>-aor]     type=aor con qualify
+   *   - [trunk_<id>-reg]     type=registration (solo si direction != 'inbound')
+   *   - [trunk_<id>-id]      type=identify (matchea IP del proveedor → endpoint)
+   *
+   * Después escribe el archivo y hace pjsip reload via AMI.
+   */
+  async syncAllTrunks(): Promise<{ written: number; reloaded: boolean; path: string; warnings: string[] }> {
+    const warnings: string[] = [];
+    const trunks: any[] = await this.ds.query(`
+      SELECT t.id, t.company_id, t.name, t.host, t.proxy, t.port, t.username, t.auth_username,
+             t.password_encrypted, t.domain, t.caller_id, t.transport, t.codecs,
+             t.nat_enabled, t.ice_enabled, t.rewrite_contact, t.register_interval,
+             t.encrypted_communication, t.srtp_mode, t.direction, t.priority,
+             c.slug AS company_slug, c.display_name AS company_name
+      FROM sip_trunks t
+      INNER JOIN companies c ON c.id = t.company_id
+      WHERE c.status = 'active'
+      ORDER BY t.company_id, t.priority, t.id
+    `);
+
+    const lines: string[] = [
+      '; ===================================================================',
+      '; pjsip-trunks.conf — generado automáticamente por callcenter-backend',
+      `; Total troncales: ${trunks.length}`,
+      `; Generado: ${new Date().toISOString()}`,
+      '; NO EDITAR A MANO — se sobrescribe en cada sync',
+      '; ===================================================================',
+      '',
+    ];
+
+    let companyHeaderId: number | null = null;
+    for (const t of trunks) {
+      if (t.company_id !== companyHeaderId) {
+        lines.push('');
+        lines.push(`; ── Empresa #${t.company_id} (${t.company_slug}) ──`);
+        companyHeaderId = t.company_id;
+      }
+
+      let password: string;
+      try {
+        password = this.encryption.decrypt(t.password_encrypted);
+      } catch (e: any) {
+        warnings.push(`Troncal "${t.name}" (id=${t.id}): no se pudo desencriptar password (${e?.message})`);
+        continue;
+      }
+
+      const trunkId = `trunk_${t.id}`;
+      const transport = `transport-${t.transport}`;
+      const codecsArr: string[] = Array.isArray(t.codecs) && t.codecs.length ? t.codecs : ['ulaw', 'alaw'];
+      const codecs = codecsArr.join(',');
+      const authUsername = t.auth_username || t.username;
+      const direction: string = t.direction || 'both';
+      const allowOutbound = direction === 'outbound' || direction === 'both';
+      const allowInbound = direction === 'inbound' || direction === 'both';
+
+      // ---------- endpoint ----------
+      lines.push(
+        `; Troncal "${t.name}" (${direction})`,
+        `[${trunkId}]`,
+        'type=endpoint',
+        `transport=${transport}`,
+        `context=from-trunk-${t.id}`,
+        'disallow=all',
+        `allow=${codecs}`,
+        `aors=${trunkId}-aor`,
+        `outbound_auth=${trunkId}-auth`,
+        'direct_media=no',
+        `from_user=${t.username}`,
+        `from_domain=${t.domain || t.host}`,
+      );
+      if (t.caller_id) lines.push(`callerid=${t.caller_id}`);
+      if (t.nat_enabled) {
+        lines.push('rtp_symmetric=yes', 'force_rport=yes');
+        if (t.rewrite_contact) lines.push('rewrite_contact=yes');
+      }
+      if (t.encrypted_communication && t.srtp_mode && t.srtp_mode !== 'disabled') {
+        lines.push(`media_encryption=${t.srtp_mode === 'required' ? 'sdes' : 'no'}`);
+      }
+      lines.push('');
+
+      // ---------- auth ----------
+      lines.push(
+        `[${trunkId}-auth]`,
+        'type=auth',
+        'auth_type=userpass',
+        `username=${authUsername}`,
+        `password=${password}`,
+        '',
+      );
+
+      // ---------- aor ----------
+      lines.push(
+        `[${trunkId}-aor]`,
+        'type=aor',
+        `contact=sip:${t.host}:${t.port}`,
+        'qualify_frequency=60',
+        '',
+      );
+
+      // ---------- registration (solo si la troncal hace REGISTER al proveedor) ----------
+      if (allowOutbound) {
+        lines.push(
+          `[${trunkId}-reg]`,
+          'type=registration',
+          `transport=${transport}`,
+          `outbound_auth=${trunkId}-auth`,
+          `server_uri=sip:${t.host}:${t.port}`,
+          `client_uri=sip:${t.username}@${t.domain || t.host}`,
+          `contact_user=${t.username}`,
+          `expiration=${t.register_interval || 300}`,
+          'retry_interval=60',
+          'forbidden_retry_interval=600',
+          '',
+        );
+      }
+
+      // ---------- identify (matchea IP del proveedor para llamadas entrantes) ----------
+      if (allowInbound) {
+        lines.push(
+          `[${trunkId}-id]`,
+          'type=identify',
+          `endpoint=${trunkId}`,
+          `match=${t.host}`,
+          '',
+        );
+      }
+    }
+
+    const filePath = this.trunksConfPath();
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, lines.join('\n'), { mode: 0o644 });
+      this.logger.log(`PJSIP trunks config escrito en ${filePath} (${trunks.length} troncales)`);
+    } catch (e: any) {
+      this.logger.error(`No se pudo escribir ${filePath}: ${e?.message}`);
+      throw new Error(`No se pudo escribir el archivo PJSIP trunks: ${e?.message}`);
+    }
+
+    let reloaded = false;
+    try {
+      reloaded = await this.bridge.pjsipReload();
+      if (!reloaded) warnings.push('pjsip reload falló o AMI no conectado. Recarga manual: docker exec cc-asterisk asterisk -rx "module reload res_pjsip.so"');
+    } catch (e: any) {
+      warnings.push(`pjsip reload error: ${e?.message}`);
+    }
+
+    return { written: trunks.length, reloaded, path: filePath, warnings };
   }
 
   /** Estado actual del bridge Asterisk + endpoints registrados (vía AMI). */

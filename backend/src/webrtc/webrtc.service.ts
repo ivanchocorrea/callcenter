@@ -76,9 +76,14 @@ export class WebRtcService {
       }
     }
 
-    const wssDefault = `wss://${this.config.get<string>('asterisk.host')}:8089/ws`;
+    // IMPORTANTE: usamos `asterisk.publicHost` (no `asterisk.host`) porque
+    // estos valores se envían al NAVEGADOR del agente. El navegador no puede
+    // resolver hostnames internos de Docker como `host.docker.internal`; debe
+    // ver el dominio público (ej: app.somoscallcenter.com).
+    const publicHost = this.config.get<string>('asterisk.publicHost') ?? this.config.get<string>('asterisk.host');
+    const wssDefault = `wss://${publicHost}:8089/ws`;
     return {
-      sip_uri: `sip:${agent.extension}@${this.config.get<string>('asterisk.host')}`,
+      sip_uri: `sip:${agent.extension}@${publicHost}`,
       sip_password: sipPassword,
       wss_url: ws.sip_wss_url ?? wssDefault,
       ice_servers: ice,
