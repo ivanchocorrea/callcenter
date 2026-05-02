@@ -34,6 +34,12 @@ interface SipContextValue {
   toggleHold: () => Promise<void>;
   toggleMute: () => void;
   sendDtmf: (tones: string) => Promise<void>;
+  /**
+   * Marca que el agente acaba de iniciar una llamada saliente desde el dialer.
+   * El próximo INVITE entrante (que es la otra pata del click-to-call) se
+   * auto-contesta sin mostrar el popup "Contestar". Vence a los `ttlMs`.
+   */
+  markPendingOutbound: (ttlMs?: number) => void;
 }
 
 const SipCtx = createContext<SipContextValue | undefined>(undefined);
@@ -41,6 +47,10 @@ const SipCtx = createContext<SipContextValue | undefined>(undefined);
 export function SipProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const clientRef = useRef<SipClient | null>(null);
+  // Timestamp hasta el cual el próximo INVITE entrante se auto-contesta
+  // (porque es la otra pata de un click-to-call que el agente acaba de
+  // iniciar). 0 = no hay pending outbound.
+  const pendingOutboundUntilRef = useRef<number>(0);
   const [state, setState] = useState<SipState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
@@ -51,6 +61,18 @@ export function SipProvider({ children }: { children: ReactNode }) {
     if (e.type === 'unregistered') setState('unregistered');
     if (e.type === 'failed') { setState('failed'); setError(e.reason); }
     if (e.type === 'incoming') {
+      // Si el agente acaba de iniciar una llamada saliente desde el dialer,
+      // el próximo INVITE entrante es la otra pata del click-to-call. Lo
+      // contestamos automáticamente sin mostrar el popup "Contestar".
+      if (Date.now() < pendingOutboundUntilRef.current) {
+        pendingOutboundUntilRef.current = 0;  // consume el flag
+        // Auto-answer del INVITE recién recibido
+        clientRef.current?.answer().catch(err => {
+          console.error('Auto-answer falló:', err);
+        });
+        // NO seteamos `incoming` para no mostrar el popup
+        return;
+      }
       setIncoming({
         remoteUri: e.remoteUri,
         displayName: e.displayName,
@@ -71,6 +93,10 @@ export function SipProvider({ children }: { children: ReactNode }) {
       setActive(null);
       setIncoming(null);
     }
+  }, []);
+
+  const markPendingOutbound = useCallback((ttlMs = 15000) => {
+    pendingOutboundUntilRef.current = Date.now() + ttlMs;
   }, []);
 
   const start = useCallback(async () => {
@@ -147,6 +173,7 @@ export function SipProvider({ children }: { children: ReactNode }) {
   const value: SipContextValue = {
     state, error, incoming, active,
     start, stop, dial, answer, hangup, toggleHold, toggleMute, sendDtmf,
+    markPendingOutbound,
   };
   return <SipCtx.Provider value={value}>{children}</SipCtx.Provider>;
 }

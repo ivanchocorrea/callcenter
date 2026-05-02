@@ -49,13 +49,14 @@ export default function DialerPage() {
   const press = (k: string) => setNum(v => (v + k).slice(0, 25));
 
   async function call() {
-    if (!num) return;
+    if (!num || calling || sip.active) return;
     setCalling(true);
     setError(null);
     try {
+      // Marca que el próximo INVITE entrante (la otra pata del click-to-call)
+      // se debe auto-contestar — el agente NO tiene que dar click en "Contestar".
+      sip.markPendingOutbound(20000);
       await api.post('/dial', { number: num });
-      // El popup local NO aparece para outbound; SIP.js mostrará la sesión
-      // cuando Asterisk conecte. Refrescamos el historial al terminar.
       setNum('');
       setTimeout(reload, 1500);
     } catch (err: any) {
@@ -74,7 +75,15 @@ export default function DialerPage() {
             <input
               value={num}
               onChange={e => setNum(e.target.value.replace(/[^\d+*#]/g, ''))}
+              onKeyDown={e => {
+                // Enter dispara la llamada (igual que el botón verde "Llamar")
+                if (e.key === 'Enter' && num && !calling && !sip.active) {
+                  e.preventDefault();
+                  void call();
+                }
+              }}
               placeholder="+57 300 000 0000"
+              autoFocus
               className="w-full rounded-lg border border-slate-200 px-3 py-3 text-2xl font-mono tracking-widest text-center outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
             />
             <div className="mt-4 grid grid-cols-3 gap-2">
