@@ -405,8 +405,8 @@ export default function DialerPage() {
           )}
         </div>
 
-        {/* Fila superior: dialer (50%) + script (50%) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Fila superior: dialer ancho fijo (~380px) + script ocupa el resto */}
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4">
           {/* ============ DIALER ============ */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
@@ -490,14 +490,14 @@ export default function DialerPage() {
                     }}
                     placeholder="3001234567"
                     autoFocus
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xl font-mono tracking-widest text-center outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:bg-white transition"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-lg font-mono tracking-wider text-center outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:bg-white transition"
                   />
-                  <div className="mt-3 grid grid-cols-3 gap-1.5">
+                  <div className="mt-3 grid grid-cols-3 gap-1.5 max-w-[280px] mx-auto">
                     {KEYS.flat().map(k => (
                       <button
                         key={k}
                         onClick={() => press(k)}
-                        className="h-11 rounded-lg bg-slate-50 hover:bg-brand-50 hover:border-brand-300 border border-slate-200 text-base font-medium text-slate-700 transition active:scale-95"
+                        className="h-11 rounded-lg bg-white hover:bg-brand-50 hover:border-brand-300 border border-slate-200 text-base font-medium text-slate-700 transition active:scale-95 shadow-sm"
                       >
                         {k}
                       </button>
