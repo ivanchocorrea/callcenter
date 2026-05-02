@@ -134,6 +134,11 @@ export default function DialerPage() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
 
+  // Duración de la llamada en vivo (segundos)
+  const [callDuration, setCallDuration] = useState(0);
+  const [showKeypad, setShowKeypad] = useState(true);
+  const [activeCallTab, setActiveCallTab] = useState<'acciones' | 'info' | 'historia'>('acciones');
+
   // ----------------- Cargar historial paginado -----------------
   async function loadHistory(p = page, q = search) {
     try {
@@ -241,6 +246,18 @@ export default function DialerPage() {
       setDispositionId(null);
     }
   }, [sip.active, sip.incoming, activeCallId]);
+
+  // Timer de duración en vivo cuando hay llamada activa
+  useEffect(() => {
+    if (!sip.active) { setCallDuration(0); return; }
+    const startedAt = sip.active.startedAt instanceof Date
+      ? sip.active.startedAt.getTime()
+      : Date.now();
+    const tick = () => setCallDuration(Math.floor((Date.now() - startedAt) / 1000));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [sip.active]);
   useEffect(() => { loadHistory(page, search); }, [page]);
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); loadHistory(1, search); }, 300);
@@ -421,36 +438,65 @@ export default function DialerPage() {
               </div>
             )}
 
-            <div className="p-5">
-              {/* Display del número */}
-              <input
-                value={num}
-                onChange={e => setNum(e.target.value.replace(/[^\d+*#]/g, ''))}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && num && !calling && !sip.active) {
-                    e.preventDefault();
-                    void call();
-                  }
-                }}
-                placeholder="3001234567"
-                autoFocus
-                disabled={!!sip.active}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-2xl font-mono tracking-widest text-center outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:bg-white transition disabled:opacity-50"
-              />
-
-              {/* Keypad compacto */}
-              <div className="mt-4 grid grid-cols-3 gap-1.5">
-                {KEYS.flat().map(k => (
-                  <button
-                    key={k}
-                    onClick={() => press(k)}
-                    disabled={!!sip.active}
-                    className="aspect-square rounded-xl bg-slate-50 hover:bg-brand-50 hover:border-brand-300 border border-slate-200 text-xl font-medium text-slate-700 transition active:scale-95 disabled:opacity-50"
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
+            <div className="p-4">
+              {sip.active ? (
+                /* ============ TARJETA SOFTPHONE (con llamada activa) ============ */
+                <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white p-5 shadow-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-xl font-bold ring-2 ring-white/30">
+                      {getInitials(incomingCustomer?.name ?? sip.active.displayName ?? sip.active.remoteUri)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-lg truncate">
+                        {incomingCustomer?.name ?? sip.active.displayName ?? sip.active.remoteUri}
+                      </div>
+                      <div className="text-sm text-white/80 font-mono truncate">{sip.active.remoteUri}</div>
+                      {incomingCustomer?.is_vip && (
+                        <span className="inline-block mt-1 text-[10px] uppercase tracking-wide bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                          ⭐ VIP
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-white/70 uppercase tracking-wide">Duración</div>
+                      <div className="text-2xl font-mono font-bold tabular-nums">{formatDuration(callDuration)}</div>
+                      {sip.active.onHold && (
+                        <span className="inline-block mt-0.5 text-[10px] uppercase tracking-wide bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                          ⏸ EN ESPERA
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ============ DISPLAY + KEYPAD (sin llamada) ============ */
+                <>
+                  <input
+                    value={num}
+                    onChange={e => setNum(e.target.value.replace(/[^\d+*#]/g, ''))}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && num && !calling) {
+                        e.preventDefault();
+                        void call();
+                      }
+                    }}
+                    placeholder="3001234567"
+                    autoFocus
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xl font-mono tracking-widest text-center outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:bg-white transition"
+                  />
+                  <div className="mt-3 grid grid-cols-3 gap-1.5">
+                    {KEYS.flat().map(k => (
+                      <button
+                        key={k}
+                        onClick={() => press(k)}
+                        className="h-11 rounded-lg bg-slate-50 hover:bg-brand-50 hover:border-brand-300 border border-slate-200 text-base font-medium text-slate-700 transition active:scale-95"
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {error && (
                 <div className="mt-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm p-2.5">
@@ -458,37 +504,60 @@ export default function DialerPage() {
                 </div>
               )}
 
-              {/* Botones primarios */}
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => setNum(v => v.slice(0, -1))}
-                  disabled={!!sip.active}
-                  className="rounded-xl bg-slate-100 hover:bg-slate-200 py-3 text-slate-700 text-sm flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-                >
-                  <Delete className="w-4 h-4" /> Borrar
-                </button>
+              {/* Botón principal: Llamar / Colgar */}
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 {sip.active ? (
-                  <button
-                    onClick={() => sip.hangup()}
-                    className="col-span-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
-                  >
-                    <PhoneOff className="w-4 h-4" /> Colgar
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowKeypad(v => !v)}
+                      className="rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-slate-700 text-xs font-medium flex items-center justify-center gap-1 transition"
+                    >
+                      ⚏ DTMF
+                    </button>
+                    <button
+                      onClick={() => sip.hangup()}
+                      className="col-span-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white py-2.5 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
+                    >
+                      <PhoneOff className="w-4 h-4" /> Colgar
+                    </button>
+                  </>
                 ) : (
-                  <button
-                    disabled={num.length === 0 || calling}
-                    onClick={() => call()}
-                    className="col-span-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
-                  >
-                    <Phone className="w-4 h-4" /> {calling ? 'Llamando…' : 'Llamar'}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setNum(v => v.slice(0, -1))}
+                      className="rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-slate-700 text-sm flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Delete className="w-4 h-4" /> Borrar
+                    </button>
+                    <button
+                      disabled={num.length === 0 || calling}
+                      onClick={() => call()}
+                      className="col-span-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
+                    >
+                      <Phone className="w-4 h-4" /> {calling ? 'Llamando…' : 'Llamar'}
+                    </button>
+                  </>
                 )}
               </div>
 
+              {/* DTMF keypad mini cuando está en llamada (para tonos de menú IVR) */}
+              {sip.active && showKeypad && (
+                <div className="mt-3 grid grid-cols-3 gap-1">
+                  {KEYS.flat().map(k => (
+                    <button
+                      key={k}
+                      onClick={() => sip.sendDtmf(k)}
+                      className="h-9 rounded-md bg-slate-50 hover:bg-brand-50 border border-slate-200 text-sm font-mono transition active:scale-95"
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Controles (incl. transferir) */}
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Controles</div>
-                <div className="grid grid-cols-5 gap-2">
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <div className="grid grid-cols-5 gap-1.5">
                   <CtrlButton
                     icon={sip.active?.muted ? MicOff : Mic}
                     label="Mute"
@@ -888,6 +957,22 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Saca iniciales de un nombre o número (ej "Javier Torres" → "JT", "+57300..." → "30"). */
+function getInitials(s: string | null | undefined): string {
+  if (!s) return '?';
+  const t = s.trim();
+  // Si parece un número (tiene muchos dígitos), tomamos los 2 últimos
+  if (/^\+?\d[\d\s-]+$/.test(t)) {
+    const digits = t.replace(/\D/g, '');
+    return digits.slice(-2);
+  }
+  // Sino, primera letra de las primeras 2 palabras
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 function groupByDay(items: RecentCall[]): Record<string, RecentCall[]> {
