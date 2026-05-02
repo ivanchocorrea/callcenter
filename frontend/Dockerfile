@@ -13,6 +13,10 @@ ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_SIP_WSS_URL=$NEXT_PUBLIC_SIP_WSS_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# NODE_OPTIONS aumenta el heap de V8 a 4 GB (default 1.5 GB) — Next.js
+# en proyectos grandes se queda sin memoria al hacer type-check + build.
+# Si tu VPS tiene < 4 GB RAM libre, baja este número o agrega swap.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 FROM node:20-alpine AS runner
