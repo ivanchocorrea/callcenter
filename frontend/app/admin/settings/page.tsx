@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Building2, Globe, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Building2, Globe, Save, AlertCircle, CheckCircle2, PhoneOff } from 'lucide-react';
 
 interface Company {
   id: number;
@@ -40,6 +40,11 @@ export default function SettingsPage() {
   const [primaryPhone, setPrimaryPhone] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
 
+  // Settings de UI del agente
+  const [allowAgentReject, setAllowAgentReject] = useState(true);
+  const [agentSettingsSaving, setAgentSettingsSaving] = useState(false);
+  const [agentSettingsSavedAt, setAgentSettingsSavedAt] = useState<Date | null>(null);
+
   useEffect(() => {
     if (!user?.company_id) { setLoading(false); return; }
     api.get(`/companies/${user.company_id}`)
@@ -72,7 +77,31 @@ export default function SettingsPage() {
       })
       .catch(e => setError(e?.response?.data?.error?.message ?? 'Error al cargar empresa'))
       .finally(() => setLoading(false));
+
+    // Cargar settings de UI del agente
+    api.get('/companies/me/agent-settings')
+      .then(res => {
+        const s = unwrap<{ allow_agent_reject_inbound: boolean }>(res);
+        setAllowAgentReject(s.allow_agent_reject_inbound);
+      })
+      .catch(() => { /* default true */ });
   }, [user?.company_id]);
+
+  async function saveAgentSettings(newValue: boolean) {
+    setAllowAgentReject(newValue);
+    setAgentSettingsSaving(true);
+    try {
+      await api.patch('/companies/me/agent-settings', { allow_agent_reject_inbound: newValue });
+      setAgentSettingsSavedAt(new Date());
+      setTimeout(() => setAgentSettingsSavedAt(null), 2500);
+    } catch (e: any) {
+      // revert
+      setAllowAgentReject(!newValue);
+      setError('No se pudo guardar el setting del agente');
+    } finally {
+      setAgentSettingsSaving(false);
+    }
+  }
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -223,6 +252,38 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+
+        {/* ============ SETTINGS DEL DIALER (panel del agente) ============ */}
+        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <PhoneOff className="w-5 h-5 text-brand-600" />
+            <h3 className="font-semibold text-slate-900">Panel del agente</h3>
+            {agentSettingsSavedAt && (
+              <span className="text-xs text-emerald-600 ml-auto inline-flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Guardado
+              </span>
+            )}
+          </div>
+
+          <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+            <input
+              type="checkbox"
+              checked={allowAgentReject}
+              disabled={agentSettingsSaving}
+              onChange={e => saveAgentSettings(e.target.checked)}
+              className="mt-1 w-4 h-4"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-slate-900">
+                Permitir que los agentes rechacen llamadas entrantes
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                Si se desactiva, el botón <strong>Rechazar</strong> NO aparece en el popup de llamada entrante
+                — los agentes solo pueden contestar. Útil para call centers donde se exige atender toda llamada.
+              </div>
+            </div>
+          </label>
+        </div>
       </div>
     </AppShell>
   );
