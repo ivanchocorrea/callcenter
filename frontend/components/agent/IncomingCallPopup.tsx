@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useRealtime } from '@/lib/realtime/realtime-context';
 import { useSip } from '@/lib/webrtc/sip-context';
 import { Phone, PhoneOff, Volume2, VolumeX, AlertCircle } from 'lucide-react';
@@ -27,9 +28,14 @@ interface IncomingPayload {
 export function IncomingCallPopup() {
   const realtime = useRealtime();
   const sip = useSip();
+  const pathname = usePathname();
   const [incoming, setIncoming] = useState<IncomingPayload | null>(null);
   const [muted, setMuted] = useState(false);
   const ringRef = useRef<HTMLAudioElement | null>(null);
+
+  // En /agent/dialer YA hay un banner de llamada entrante integrado
+  // (mucho más rico). Para evitar duplicar, ocultamos este popup global ahí.
+  const isInDialer = pathname === '/agent/dialer';
 
   // Conectar listener
   useEffect(() => {
@@ -41,19 +47,30 @@ export function IncomingCallPopup() {
     return () => { off(); offRinging(); offEnded(); };
   }, [realtime]);
 
-  // Timbre
+  // Timbre — ya no usamos /sounds/ring.mp3 (que daba 404). Generamos el
+  // tono con Web Audio API, sin necesidad de archivos.
   useEffect(() => {
-    if (!incoming) return;
-    if (!ringRef.current) {
-      ringRef.current = new Audio('/sounds/ring.mp3');
-      ringRef.current.loop = true;
+    if (!incoming || muted) return;
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    let stopped = false;
+
+    function beep() {
+      if (stopped) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(480, ctx.currentTime + 0.4);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.4);
+      osc.start();
+      osc.stop(ctx.currentTime + 1.5);
+      setTimeout(beep, 2500);  // patrón ring-ring cada 2.5s
     }
-    ringRef.current.muted = muted;
-    ringRef.current.play().catch(() => undefined);
-    return () => {
-      ringRef.current?.pause();
-      if (ringRef.current) ringRef.current.currentTime = 0;
-    };
+    beep();
+
+    return () => { stopped = true; ctx.close().catch(() => undefined); };
   }, [incoming, muted]);
 
   // Si SIP recibe un INVITE en paralelo, también lo aprovechamos
@@ -71,6 +88,7 @@ export function IncomingCallPopup() {
   }, [sip.incoming, incoming]);
 
   if (!incoming) return null;
+  if (isInDialer) return null; // el dialer ya tiene su propio banner
 
   const customer = incoming.customer;
 

@@ -402,40 +402,16 @@ export default function DialerPage() {
               <StatusPill state={sip.state} active={!!sip.active} />
             </div>
 
-            {/* PANEL DE LLAMADA ENTRANTE INTEGRADO */}
+            {/* ============ LLAMADA ENTRANTE — diseño "iPhone llamando" ============ */}
             {sip.incoming && (
-              <div className="border-b border-amber-200 bg-amber-50 px-5 py-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-full bg-emerald-100 animate-pulse">
-                    <PhoneIncoming className="w-5 h-5 text-emerald-700" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-amber-800 uppercase tracking-wide font-semibold">Llamada entrante</div>
-                    <div className="font-bold text-lg text-slate-900 truncate">
-                      {sip.incoming.displayName ?? sip.incoming.fromNumber}
-                    </div>
-                    {sip.incoming.displayName && (
-                      <div className="text-sm text-slate-600 font-mono">{sip.incoming.fromNumber}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => sip.answer()}
-                    className="flex-1 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
-                  >
-                    <Phone className="w-4 h-4" /> Contestar
-                  </button>
-                  {agentSettings.allow_agent_reject_inbound && (
-                    <button
-                      onClick={() => sip.hangup()}
-                      className="flex-1 rounded-xl bg-rose-500 hover:bg-rose-600 text-white py-3 text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition"
-                    >
-                      <PhoneOff className="w-4 h-4" /> Rechazar
-                    </button>
-                  )}
-                </div>
-              </div>
+              <IncomingCallBanner
+                fromNumber={sip.incoming.fromNumber}
+                displayName={sip.incoming.displayName}
+                customer={incomingCustomer}
+                allowReject={agentSettings.allow_agent_reject_inbound}
+                onAnswer={() => sip.answer()}
+                onReject={() => sip.hangup()}
+              />
             )}
 
             <div className="p-4">
@@ -873,6 +849,159 @@ export default function DialerPage() {
 // ===================================================================
 // Sub-componentes
 // ===================================================================
+
+/**
+ * Banner de llamada entrante estilo "iPhone llamando":
+ * - Gradiente azul→púrpura con animación pulsante.
+ * - Avatar grande con halo de 2 anillos (animate-ping con delays distintos).
+ * - Datos del cliente: nombre, número, badge VIP, notas importantes.
+ * - Timer de cuánto lleva sonando.
+ * - Timbre con Web Audio API (sin archivo mp3 que dé 404).
+ * - Botones grandes Aceptar (verde) / Rechazar (rojo, oculto si admin lo deshabilita).
+ */
+function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, onAnswer, onReject }: {
+  fromNumber: string;
+  displayName: string | null;
+  customer: CustomerInfo | null;
+  allowReject: boolean;
+  onAnswer: () => void;
+  onReject: () => void;
+}) {
+  const [ringingFor, setRingingFor] = useState(0);
+  const [ringMuted, setRingMuted] = useState(false);
+
+  // Timer
+  useEffect(() => {
+    const t = setInterval(() => setRingingFor(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Timbre con Web Audio API (sin archivo)
+  useEffect(() => {
+    if (ringMuted) return;
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    let stopped = false;
+    function beep() {
+      if (stopped) return;
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.setValueAtTime(480, ctx.currentTime + 0.4);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.4);
+        osc.start();
+        osc.stop(ctx.currentTime + 1.5);
+      } catch { /* ignore */ }
+      setTimeout(beep, 2500);
+    }
+    beep();
+    return () => { stopped = true; ctx.close().catch(() => undefined); };
+  }, [ringMuted]);
+
+  const name = customer?.name ?? displayName ?? fromNumber;
+  const isVip = customer?.is_vip;
+
+  return (
+    <div className="relative overflow-hidden">
+      {/* Gradiente animado de fondo */}
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-600 animate-gradient-x" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_70%)]" />
+
+      <div className="relative px-6 py-5 text-white">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-white/90">Llamada entrante</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono tabular-nums text-white/80">{formatDuration(ringingFor)}</span>
+            <button
+              onClick={() => setRingMuted(v => !v)}
+              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition"
+              title={ringMuted ? 'Activar timbre' : 'Silenciar timbre'}
+            >
+              {ringMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Avatar con halos pulsantes */}
+        <div className="flex items-center gap-4">
+          <div className="relative shrink-0">
+            <div className="absolute inset-0 rounded-full bg-white/40 animate-ping" />
+            <div className="absolute inset-0 rounded-full bg-white/20 animate-ping" style={{ animationDelay: '0.5s' }} />
+            <div className="relative w-16 h-16 rounded-full bg-white/25 backdrop-blur ring-2 ring-white/60 flex items-center justify-center text-xl font-bold">
+              {getInitials(name)}
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-xl truncate">{name}</div>
+            <div className="text-sm text-white/80 font-mono truncate">{fromNumber}</div>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {isVip && (
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                  ⭐ VIP
+                </span>
+              )}
+              {customer && (
+                <span className="text-[10px] uppercase tracking-wide bg-white/15 text-white px-1.5 py-0.5 rounded font-medium">
+                  Cliente registrado
+                </span>
+              )}
+              {!customer && (
+                <span className="text-[10px] uppercase tracking-wide bg-white/15 text-white px-1.5 py-0.5 rounded font-medium">
+                  Número desconocido
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Notas importantes del cliente */}
+        {customer?.important_notes && (
+          <div className="mt-3 rounded-lg bg-amber-300/30 backdrop-blur border border-amber-200/40 px-3 py-2 text-xs">
+            <strong>📌 Nota:</strong> {customer.important_notes}
+          </div>
+        )}
+
+        {/* Botones */}
+        <div className="mt-5 flex gap-3">
+          <button
+            onClick={onAnswer}
+            className="flex-1 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition"
+          >
+            <Phone className="w-5 h-5" /> Contestar
+          </button>
+          {allowReject && (
+            <button
+              onClick={onReject}
+              className="flex-1 rounded-2xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 transition"
+            >
+              <PhoneOff className="w-5 h-5" /> Rechazar
+            </button>
+          )}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes gradient-x {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        :global(.animate-gradient-x) {
+          background-size: 200% 200%;
+          animation: gradient-x 3s ease infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
 
 function StatusPill({ state, active }: { state: string; active: boolean }) {
   const map: Record<string, { text: string; cls: string; dot: string }> = {
