@@ -132,7 +132,11 @@ export class AsteriskConfigService {
     const filePath = this.agentsConfPath();
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, lines.join('\n'), { mode: 0o640 });
+      // mode 0644: el backend (root en el contenedor) escribe el archivo,
+      // pero Asterisk corre como UID 1000 (otro usuario) y necesita leerlo.
+      // El archivo vive en /etc/asterisk dentro de un volumen privado del
+      // host (/opt/callcenter/asterisk/etc), así que world-readable es OK.
+      fs.writeFileSync(filePath, lines.join('\n'), { mode: 0o644 });
       this.logger.log(`PJSIP agents config escrito en ${filePath} (${agents.length} agentes)`);
     } catch (e: any) {
       this.logger.error(`No se pudo escribir ${filePath}: ${e?.message}`);
