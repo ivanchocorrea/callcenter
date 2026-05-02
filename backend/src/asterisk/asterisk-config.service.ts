@@ -212,7 +212,10 @@ export class AsteriskConfigService {
         continue;
       }
 
-      const trunkId = `trunk_${t.id}`;
+      // Naming consistente con el resto del backend (outbound-dialer,
+      // callbacks, campaigns, asterisk-realtime). Si cambia este formato,
+      // hay que cambiarlo en TODOS esos lugares también.
+      const trunkId = `trunk_${t.company_id}_${t.id}`;
       const transport = `transport-${t.transport}`;
       const codecsArr: string[] = Array.isArray(t.codecs) && t.codecs.length ? t.codecs : ['ulaw', 'alaw'];
       const codecs = codecsArr.join(',');
@@ -227,7 +230,10 @@ export class AsteriskConfigService {
         `[${trunkId}]`,
         'type=endpoint',
         `transport=${transport}`,
-        `context=from-trunk-${t.id}`,
+        // Context genérico `from-trunk` (definido en extensions.conf). El
+        // routing por DID se hace ahí, no por troncal — más simple de
+        // mantener cuando se agregan/quitan troncales.
+        'context=from-trunk',
         'disallow=all',
         `allow=${codecs}`,
         `aors=${trunkId}-aor`,
@@ -261,7 +267,12 @@ export class AsteriskConfigService {
         `[${trunkId}-aor]`,
         'type=aor',
         `contact=sip:${t.host}:${t.port}`,
-        'qualify_frequency=60',
+        // qualify_frequency=0 deshabilita el ping OPTIONS al proveedor.
+        // Algunos proveedores (ej: Colombia RED) no responden a OPTIONS,
+        // y si se hace qualify, marcan el AOR como Unreachable y Asterisk
+        // rechaza llamadas con "0 available contacts". Sin qualify, el
+        // AOR está siempre disponible y las llamadas salen normalmente.
+        'qualify_frequency=0',
         '',
       );
 
