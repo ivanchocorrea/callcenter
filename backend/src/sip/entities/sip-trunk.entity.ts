@@ -90,6 +90,26 @@ export class SipTrunk {
   @Column({ name: 'advanced_config', type: 'json', nullable: true })
   advancedConfig!: Record<string, unknown> | null;
 
+  // ---------- Prefijos de marcación específicos del proveedor ----------
+  // El backend antepone estos al número marcado por el agente antes de
+  // enviar el INVITE. Si la columna está NULL, el dialplan usa el global
+  // OUTBOUND_PREFIX_* de extensions.conf como fallback.
+
+  /** Prefijo para celulares (ej Colombia RED: "06"). El sistema arma:
+   *  <dial_prefix_mobile> + 57 + <número_celular_10_digitos> */
+  @Column({ name: 'dial_prefix_mobile', type: 'varchar', length: 10, nullable: true })
+  dialPrefixMobile!: string | null;
+
+  /** Prefijo para fijos (ej Colombia RED: "57"). El sistema arma:
+   *  <dial_prefix_landline> + <número_fijo> */
+  @Column({ name: 'dial_prefix_landline', type: 'varchar', length: 10, nullable: true })
+  dialPrefixLandline!: string | null;
+
+  /** Prefijo para llamadas internacionales (cuando el agente ya escribió
+   *  el código país al inicio, ej "57XX..."). */
+  @Column({ name: 'dial_prefix_intl', type: 'varchar', length: 10, nullable: true })
+  dialPrefixIntl!: string | null;
+
   @Column({ type: 'enum', enum: ['active', 'inactive', 'error', 'registering'], default: 'inactive' })
   status!: SipStatus;
 

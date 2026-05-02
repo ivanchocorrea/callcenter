@@ -64,14 +64,16 @@ export class OutboundDialerService {
       throw new ForbiddenException('Este número está en lista DNC');
     }
 
-    // Trunk
+    // Trunk (incluye prefijos de marcación específicos del proveedor)
     const trunkRows: any[] = dto.trunk_id
       ? await this.ds.query(
-          `SELECT id, name FROM sip_trunks WHERE id = ? AND company_id = ? AND status != 'error' AND direction IN ('outbound','both') LIMIT 1`,
+          `SELECT id, name, dial_prefix_mobile, dial_prefix_landline, dial_prefix_intl
+           FROM sip_trunks WHERE id = ? AND company_id = ? AND status != 'error' AND direction IN ('outbound','both') LIMIT 1`,
           [dto.trunk_id, actor.companyId],
         )
       : await this.ds.query(
-          `SELECT id, name FROM sip_trunks WHERE company_id = ? AND status != 'error' AND direction IN ('outbound','both') ORDER BY priority ASC LIMIT 1`,
+          `SELECT id, name, dial_prefix_mobile, dial_prefix_landline, dial_prefix_intl
+           FROM sip_trunks WHERE company_id = ? AND status != 'error' AND direction IN ('outbound','both') ORDER BY priority ASC LIMIT 1`,
           [actor.companyId],
         );
     if (trunkRows.length === 0) throw new BadRequestException('Sin troncal disponible para outbound');
@@ -113,6 +115,11 @@ export class OutboundDialerService {
         variables: {
           TRUNK_NAME: trunkName,
           CALLER_ID_NUM: dto.caller_id ?? '',
+          // Prefijos por troncal (el dialplan los usa si no son vacíos,
+          // si son vacíos cae a los OUTBOUND_PREFIX_* globales).
+          TRUNK_PREFIX_MOBILE: trunk.dial_prefix_mobile ?? '',
+          TRUNK_PREFIX_LANDLINE: trunk.dial_prefix_landline ?? '',
+          TRUNK_PREFIX_INTL: trunk.dial_prefix_intl ?? '',
           'X-Call-Id': String(call.id),
           'X-Company-Id': String(actor.companyId),
         },

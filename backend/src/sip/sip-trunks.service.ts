@@ -54,6 +54,9 @@ export interface SipTrunkPublic {
   status: string;
   last_registered_at: Date | null;
   last_error: string | null;
+  dial_prefix_mobile: string | null;
+  dial_prefix_landline: string | null;
+  dial_prefix_intl: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -125,6 +128,9 @@ export class SipTrunksService {
       fallbackTrunkId: dto.fallback_trunk_id ?? null,
       maxConcurrentCalls: dto.max_concurrent_calls ?? null,
       advancedConfig: dto.advanced_config ?? null,
+      dialPrefixMobile: dto.dial_prefix_mobile ?? null,
+      dialPrefixLandline: dto.dial_prefix_landline ?? null,
+      dialPrefixIntl: dto.dial_prefix_intl ?? null,
       status: 'inactive',
     });
     const saved = await this.repo.save(trunk);
@@ -189,6 +195,9 @@ export class SipTrunksService {
     if (dto.fallback_trunk_id !== undefined) t.fallbackTrunkId = dto.fallback_trunk_id;
     if (dto.max_concurrent_calls !== undefined) t.maxConcurrentCalls = dto.max_concurrent_calls;
     if (dto.advanced_config !== undefined) t.advancedConfig = dto.advanced_config;
+    if (dto.dial_prefix_mobile !== undefined) t.dialPrefixMobile = dto.dial_prefix_mobile || null;
+    if (dto.dial_prefix_landline !== undefined) t.dialPrefixLandline = dto.dial_prefix_landline || null;
+    if (dto.dial_prefix_intl !== undefined) t.dialPrefixIntl = dto.dial_prefix_intl || null;
 
     const saved = await this.repo.save(t);
 
@@ -496,6 +505,9 @@ export class SipTrunksService {
       status: t.status,
       last_registered_at: t.lastRegisteredAt,
       last_error: t.lastError,
+      dial_prefix_mobile: t.dialPrefixMobile,
+      dial_prefix_landline: t.dialPrefixLandline,
+      dial_prefix_intl: t.dialPrefixIntl,
       created_at: t.createdAt,
       updated_at: t.updatedAt,
     };

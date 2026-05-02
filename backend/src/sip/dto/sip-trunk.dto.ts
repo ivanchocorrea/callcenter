@@ -125,6 +125,23 @@ export class CreateSipTrunkDto {
   @ApiProperty({ required: false, description: 'JSON libre con campos avanzados' })
   @IsOptional()
   advanced_config?: Record<string, unknown>;
+
+  // ----- Prefijos de marcación (específicos del proveedor) -----
+
+  @ApiProperty({ required: false, example: '06', description: 'Prefijo para celulares (ej Colombia RED: 06)' })
+  @IsOptional()
+  @IsString()
+  dial_prefix_mobile?: string;
+
+  @ApiProperty({ required: false, example: '57', description: 'Prefijo para fijos (ej Colombia RED: 57)' })
+  @IsOptional()
+  @IsString()
+  dial_prefix_landline?: string;
+
+  @ApiProperty({ required: false, example: '06', description: 'Prefijo para internacionales (cuando el agente ya escribió código país)' })
+  @IsOptional()
+  @IsString()
+  dial_prefix_intl?: string;
 }
 
 export class UpdateSipTrunkDto extends PartialType(CreateSipTrunkDto) {}

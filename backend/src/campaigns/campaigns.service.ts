@@ -173,10 +173,12 @@ export class CampaignsService {
       await this.ds.query(`UPDATE campaign_contacts SET status='queued', attempts = attempts + 1, last_attempt_at = NOW() WHERE id = ?`, [c.id]);
 
       const trunkRows = await this.ds.query(
-        `SELECT id FROM sip_trunks WHERE id = ? AND company_id = ? LIMIT 1`,
+        `SELECT id, dial_prefix_mobile, dial_prefix_landline, dial_prefix_intl
+         FROM sip_trunks WHERE id = ? AND company_id = ? LIMIT 1`,
         [camp.trunk_id, camp.company_id],
       );
-      const trunkId = trunkRows[0]?.id ?? camp.trunk_id;
+      const trunkRow = trunkRows[0];
+      const trunkId = trunkRow?.id ?? camp.trunk_id;
       if (!trunkId) {
         await this.ds.query(`UPDATE campaign_contacts SET status='failed' WHERE id = ?`, [c.id]);
         continue;
@@ -198,6 +200,9 @@ export class CampaignsService {
             'X-Campaign-Id': String(camp.id),
             'X-Contact-Id': String(c.id),
             CALLER_ID_NUM: camp.caller_id ?? '',
+            TRUNK_PREFIX_MOBILE: trunkRow?.dial_prefix_mobile ?? '',
+            TRUNK_PREFIX_LANDLINE: trunkRow?.dial_prefix_landline ?? '',
+            TRUNK_PREFIX_INTL: trunkRow?.dial_prefix_intl ?? '',
             ...(camp.amd_enabled ? { 'X-AMD': '1' } : {}),
           },
           timeout: 45,

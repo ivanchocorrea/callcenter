@@ -30,6 +30,10 @@ interface FormData {
   encrypted_communication: boolean;
   srtp_mode: 'disabled' | 'optional' | 'required';
   priority: number;
+  // Prefijos de marcación (específicos del proveedor)
+  dial_prefix_mobile?: string;
+  dial_prefix_landline?: string;
+  dial_prefix_intl?: string;
 }
 
 const DEFAULTS: FormData = {
@@ -49,6 +53,9 @@ const DEFAULTS: FormData = {
   encrypted_communication: false,
   srtp_mode: 'disabled',
   priority: 100,
+  dial_prefix_mobile: '',
+  dial_prefix_landline: '',
+  dial_prefix_intl: '',
 };
 
 export function TrunkFormModal({ trunkId, onClose, onSaved }: Props) {
@@ -82,6 +89,9 @@ export function TrunkFormModal({ trunkId, onClose, onSaved }: Props) {
         encrypted_communication: t.encrypted_communication ?? false,
         srtp_mode: t.srtp_mode ?? 'disabled',
         priority: t.priority ?? 100,
+        dial_prefix_mobile: t.dial_prefix_mobile ?? '',
+        dial_prefix_landline: t.dial_prefix_landline ?? '',
+        dial_prefix_intl: t.dial_prefix_intl ?? '',
       });
     });
   }, [trunkId, isEdit]);
@@ -180,6 +190,46 @@ export function TrunkFormModal({ trunkId, onClose, onSaved }: Props) {
               <Field label="Caller ID">
                 <input value={data.caller_id ?? ''} onChange={e => set('caller_id', e.target.value)} className="input" placeholder="+57..." />
               </Field>
+            </div>
+
+            {/* PREFIJOS DE MARCACIÓN (específicos del proveedor) */}
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-semibold text-slate-700 mb-2">
+                Prefijos de marcación
+                <span className="ml-1 font-normal text-slate-500">
+                  (cada proveedor exige un formato distinto — el agente marca el número natural y el sistema antepone el prefijo)
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Celular (ej: 06)">
+                  <input
+                    value={data.dial_prefix_mobile ?? ''}
+                    onChange={e => set('dial_prefix_mobile', e.target.value)}
+                    className="input"
+                    placeholder="06"
+                  />
+                </Field>
+                <Field label="Fijo (ej: 57)">
+                  <input
+                    value={data.dial_prefix_landline ?? ''}
+                    onChange={e => set('dial_prefix_landline', e.target.value)}
+                    className="input"
+                    placeholder="57"
+                  />
+                </Field>
+                <Field label="Internacional (ej: 06)">
+                  <input
+                    value={data.dial_prefix_intl ?? ''}
+                    onChange={e => set('dial_prefix_intl', e.target.value)}
+                    className="input"
+                    placeholder="06"
+                  />
+                </Field>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                Para Colombia RED: móvil <code className="bg-white px-1 rounded">06</code>, fijo <code className="bg-white px-1 rounded">57</code>.
+                Si dejas vacío, el sistema usa el prefijo global de Asterisk.
+              </div>
             </div>
           </div>
 

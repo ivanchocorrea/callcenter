@@ -88,13 +88,15 @@ export class CallbacksService {
         const agent = agentRows[0];
         if (!agent) continue;
 
-        // Buscar troncal outbound
+        // Buscar troncal outbound (incluye prefijos del proveedor)
         const trunkRows = await this.ds.query(
-          `SELECT id FROM sip_trunks WHERE company_id = ? AND status != 'error' AND direction IN ('outbound','both') ORDER BY priority ASC LIMIT 1`,
+          `SELECT id, dial_prefix_mobile, dial_prefix_landline, dial_prefix_intl
+           FROM sip_trunks WHERE company_id = ? AND status != 'error' AND direction IN ('outbound','both') ORDER BY priority ASC LIMIT 1`,
           [cb.company_id],
         );
         if (!trunkRows[0]) continue;
-        const trunkName = `trunk_${cb.company_id}_${trunkRows[0].id}`;
+        const trunkRow = trunkRows[0];
+        const trunkName = `trunk_${cb.company_id}_${trunkRow.id}`;
 
         await this.ds.query(
           `UPDATE callback_requests SET status='in_progress', attempts = attempts + 1, last_attempt_at = NOW() WHERE id = ?`,
@@ -107,7 +109,13 @@ export class CallbacksService {
           extension: cb.phone,
           callerId: '',
           timeout: 45,
-          variables: { TRUNK_NAME: trunkName, 'X-Callback-Id': String(cb.id) },
+          variables: {
+            TRUNK_NAME: trunkName,
+            TRUNK_PREFIX_MOBILE: trunkRow.dial_prefix_mobile ?? '',
+            TRUNK_PREFIX_LANDLINE: trunkRow.dial_prefix_landline ?? '',
+            TRUNK_PREFIX_INTL: trunkRow.dial_prefix_intl ?? '',
+            'X-Callback-Id': String(cb.id),
+          },
         });
       } catch (err: any) {
         this.logger.error(`Callback ${cb.id} failed: ${err?.message ?? err}`);
