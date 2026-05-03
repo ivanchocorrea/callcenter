@@ -276,8 +276,16 @@ export class AsteriskConfigService {
         '',
       );
 
-      // ---------- registration (solo si la troncal hace REGISTER al proveedor) ----------
-      if (allowOutbound) {
+      // ---------- registration ----------
+      // Generamos REGISTER SIEMPRE que la troncal tenga credenciales — sin
+      // importar la dirección. Razón: muchos providers (ej Colombia RED)
+      // requieren que el cliente se registre INCLUSO para troncales solo
+      // entrantes, porque enrutan los INVITE a la IP/puerto desde donde se
+      // registró el cliente. Sin REGISTER, el provider no sabe a dónde
+      // enviarte las llamadas → entrantes nunca llegan.
+      // Si el provider usa peer-to-peer (sin auth, solo identify-by-IP),
+      // configurar la troncal sin username/password y esto se omite.
+      if (t.username && password) {
         lines.push(
           `[${trunkId}-reg]`,
           'type=registration',
