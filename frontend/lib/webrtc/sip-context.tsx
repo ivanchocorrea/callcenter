@@ -141,8 +141,14 @@ export function SipProvider({ children }: { children: ReactNode }) {
   }, [start]);
 
   const answer = useCallback(async () => {
-    await clientRef.current?.answer();
+    // Limpiamos `incoming` PRIMERO (visualmente) — si la answer() falla por
+    // algun motivo, el banner igual desaparece y no queda sonando.
     setIncoming(null);
+    try {
+      await clientRef.current?.answer();
+    } catch (err) {
+      console.error('[SipContext] answer() falló:', err);
+    }
   }, []);
 
   const hangup = useCallback(async () => {
@@ -183,16 +189,17 @@ export function SipProvider({ children }: { children: ReactNode }) {
     }
   }, [user, stop]);
 
-  // Timeout de seguridad — si pasaron 45s desde que llego un INVITE entrante
+  // Timeout de seguridad — si pasaron 35s desde que llego un INVITE entrante
   // y todavia no se contesto/cancelo, limpiamos el state a la fuerza.
-  // Cubre el bug en que algunos providers no envian CANCEL claro y el state
+  // Cubre el bug donde algunos providers no envian CANCEL claro o el state
   // listener de SIP.js no triggea, dejando el banner+ringtone sonando hasta
-  // que el usuario refresca con F5.
+  // que el usuario refresca con F5. 35s = ring de 30s + 5s margen.
   useEffect(() => {
     if (!incoming) return;
     const safety = setTimeout(() => {
+      console.warn('[SipContext] Timeout 35s — limpiando incoming state forzado');
       setIncoming(null);
-    }, 45000);
+    }, 35000);
     return () => clearTimeout(safety);
   }, [incoming]);
 

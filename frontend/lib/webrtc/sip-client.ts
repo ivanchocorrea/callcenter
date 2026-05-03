@@ -119,18 +119,43 @@ export class SipClient {
     if (!targetUri) throw new Error('Target inválido');
     const inviter = new Inviter(this.ua, targetUri);
     this.bindSession(inviter);
-    await inviter.invite();
+    // Iniciar ringback INMEDIATAMENTE (estamos dentro de un user gesture →
+    // el AudioContext puede arrancar sin estar suspended). El state listener
+    // tambien lo intentara pero a veces el estado Establishing no triggea
+    // a tiempo y se pierde el sonido inicial.
+    this.startRingback();
+    try {
+      await inviter.invite();
+    } catch (err) {
+      this.stopRingback();
+      throw err;
+    }
   }
 
   async answer(): Promise<void> {
     const s = this.currentSession;
-    if (!s) return;
-    if (!(s instanceof Invitation)) return;
-    await s.accept({
-      sessionDescriptionHandlerOptions: {
-        constraints: { audio: true, video: false },
-      } as any,
-    });
+    if (!s) {
+      console.warn('[SipClient] answer() sin currentSession activa');
+      return;
+    }
+    if (!(s instanceof Invitation)) {
+      console.warn('[SipClient] answer() — session no es Invitation:', s.constructor?.name);
+      return;
+    }
+    if (s.state !== SessionState.Initial && s.state !== SessionState.Establishing) {
+      console.warn('[SipClient] answer() — session ya en estado:', s.state);
+      return;
+    }
+    try {
+      await s.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: { audio: true, video: false },
+        } as any,
+      });
+    } catch (err) {
+      console.error('[SipClient] accept() falló:', err);
+      throw err;
+    }
   }
 
   async hangup(): Promise<void> {
@@ -198,16 +223,29 @@ export class SipClient {
 
   private handleIncoming(invitation: Invitation): void {
     this.bindSession(invitation);
-    // Manejar CANCEL del lado del caller (timeout, colgaron antes que conteste).
-    // Sin esto, en algunos escenarios el state listener no llega a disparar
-    // 'Terminated' y el banner+ringtone del frontend queda sonando hasta F5.
+    // Multiple safeguards para garantizar que el banner se limpie cuando
+    // el caller cuelga sin que el agente conteste:
+    //
+    // 1) onCancel: para CANCELs antes de la respuesta (mas comun)
+    // 2) onBye: para BYE post-respuesta
+    // 3) onSessionDescriptionHandler/error: cualquier fallo
+    //
+    // Antes solo dependia del state listener que SIP.js a veces no
+    // dispara consistentemente, dejando el banner+ringtone hasta F5.
+    const cleanup = (cause: string) => {
+      this.emit({ type: 'ended', session: invitation, cause });
+      if (this.currentSession === invitation) this.currentSession = null;
+    };
     invitation.delegate = {
       ...(invitation.delegate ?? {}),
-      onCancel: () => {
-        this.emit({ type: 'ended', session: invitation, cause: 'caller-cancelled' });
-        if (this.currentSession === invitation) this.currentSession = null;
-      },
+      onCancel: () => cleanup('caller-cancelled'),
+      onBye: () => cleanup('bye'),
     };
+    // Listener adicional al stateChange — si pasa a Terminated emite ended
+    // (el bindSession ya hace esto, pero por triple seguridad)
+    invitation.stateChange.addListener(state => {
+      if (state === SessionState.Terminated) cleanup('terminated');
+    });
     this.emit({
       type: 'incoming',
       session: invitation,
@@ -252,7 +290,16 @@ export class SipClient {
     if (this.ringbackCtx) return;
     const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
-    this.ringbackCtx = new AC();
+    try {
+      this.ringbackCtx = new AC();
+      // Browsers (Chrome/Safari) crean el AudioContext en estado 'suspended'.
+      // Si no hacemos resume(), nunca suena. Se debe llamar dentro de un
+      // user gesture — en `dial()` si lo es, en bindSession listener tal vez no.
+      this.ringbackCtx.resume().catch(() => undefined);
+    } catch (e) {
+      console.warn('[SipClient] No se pudo crear AudioContext para ringback:', e);
+      return;
+    }
     this.ringbackStopped = false;
     const beep = () => {
       if (this.ringbackStopped || !this.ringbackCtx) return;
@@ -265,12 +312,14 @@ export class SipClient {
         osc2.frequency.setValueAtTime(480, ctx.currentTime);
         osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
         gain.gain.setValueAtTime(0.001, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.05);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.9);
         osc1.start(); osc2.start();
         osc1.stop(ctx.currentTime + 2);
         osc2.stop(ctx.currentTime + 2);
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.warn('[SipClient] beep ringback fallo:', err);
+      }
       this.ringbackTimer = window.setTimeout(beep, 4000); // 2s on / 4s off
     };
     beep();
