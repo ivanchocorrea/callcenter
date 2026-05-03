@@ -208,10 +208,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3 space-y-0.5">
-          {items.map(item => {
-            const Icon = item.icon;
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
+          {/* Item activo = el href MAS LARGO que matchea la ruta actual.
+              Antes la logica era `pathname === href || pathname.startsWith(href + '/')`,
+              que marcaba como activos items con href cortos (ej. Dashboard
+              '/admin') cuando estabamos en sub-rutas (ej. '/admin/imports') →
+              2 items "pegados" en azul al mismo tiempo. */}
+          {(() => {
+            const matching = items.filter(it => pathname === it.href || pathname.startsWith(it.href + '/'));
+            const activeHref = matching.length > 0
+              ? matching.reduce((a, b) => (b.href.length > a.href.length ? b : a)).href
+              : null;
+            return items.map(item => {
+              const Icon = item.icon;
+              const active = item.href === activeHref;
+              return (
               <Link
                 key={item.href}
                 href={item.href}
@@ -223,7 +233,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span>{item.label}</span>
               </Link>
             );
-          })}
+            });
+          })()}
         </nav>
         <div className="border-t border-white/10 px-3 py-3 space-y-2">
           <div className="px-2">
