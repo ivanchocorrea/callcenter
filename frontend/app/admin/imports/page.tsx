@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Upload, CheckCircle2, AlertCircle, Database } from 'lucide-react';
+import { Upload, CheckCircle2, AlertCircle, Database, Download } from 'lucide-react';
 
 interface DetectResult {
   headers: string[];
@@ -90,12 +90,50 @@ export default function ImportsPage() {
     }
   }
 
+  function downloadTemplate() {
+    // Plantilla con todos los campos esperados + 2 filas de ejemplo, en UTF-8 BOM
+    // (asi Excel detecta UTF-8 y muestra acentos bien al abrirlo).
+    const csv = [
+      'Nombre,Telefono,Email,Documento,Empresa,Ciudad',
+      'Juan Perez Garcia,3001234567,juan@email.com,1098765432,Hospital San Juan,Honda',
+      'Maria Rodriguez Lopez,3007828286,maria@email.com,1098712345,,Mariquita',
+      '',  // linea vacia para que el usuario empiece a escribir abajo
+    ].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla-clientes.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Importar clientes</h2>
-          <p className="text-slate-500 mt-1">Sube un CSV. Próximamente: Excel y Google Sheets.</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-900">Importar clientes</h2>
+            <p className="text-slate-500 mt-1">Sube un CSV. Próximamente: Excel y Google Sheets.</p>
+          </div>
+          <button
+            onClick={downloadTemplate}
+            className="inline-flex items-center gap-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 text-sm font-medium"
+          >
+            <Download className="w-4 h-4" /> Descargar plantilla CSV
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p className="font-medium mb-1">📋 Columnas esperadas (los nombres pueden ser distintos, después los mapeás):</p>
+          <ul className="list-disc list-inside text-xs text-emerald-800 space-y-0.5">
+            <li><strong>Nombre</strong> (obligatorio)</li>
+            <li>Teléfono principal (recomendado, sin esto no funciona el lookup al recibir llamada)</li>
+            <li>Email · Documento · Empresa · Ciudad (opcionales)</li>
+          </ul>
+          <p className="text-xs text-emerald-800 mt-2">💡 Descargá la plantilla arriba para tener un ejemplo listo para llenar.</p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
