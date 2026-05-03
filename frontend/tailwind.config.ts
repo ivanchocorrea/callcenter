@@ -25,7 +25,11 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        // Stack de fuentes nativas del SO — sin depender de Google Fonts.
+        // Antes usaba 'Inter' descargado en build via next/font/google,
+        // pero el build fallaba cuando el VPS tenia timeout a
+        // fonts.googleapis.com. Esto es mas confiable y no requiere red.
+        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'sans-serif'],
       },
     },
   },
