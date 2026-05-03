@@ -88,17 +88,63 @@ export class DialplanGeneratorService implements OnApplicationBootstrap {
       `SELECT id, slug, display_name FROM companies WHERE status = 'active' ORDER BY id`,
     );
 
+    // Header del contexto donde van TODAS las extensiones de DIDs (de todas
+    // las empresas). El estatico extensions.conf hace Goto(from-trunk-dynamic).
+    lines.push('[from-trunk-dynamic]');
+    lines.push('; Generado automaticamente — TODAS las empresas comparten este contexto.');
+    lines.push('; El routing por empresa es implicito: cada DID es global y el');
+    lines.push('; UserEvent emite el company_id correcto.');
+    lines.push('');
+
     for (const company of companies) {
       const cid = Number(company.id);
       lines.push(`; ─── Empresa #${cid} (${company.slug}) ───`);
       lines.push('');
 
-      // DIDs de esta empresa
-      const dids: any[] = await this.ds.query(
+      // DIDs configurados explicitamente en la UI
+      let dids: any[] = await this.ds.query(
         `SELECT id, number, description, inbound_destination_type, inbound_destination_id, is_active
            FROM did_numbers WHERE company_id = ? AND is_active = 1`,
         [cid],
       );
+
+      // FALLBACK: si no hay DIDs configurados, generar entradas implicitas
+      // a partir del caller_id de cada troncal activa con direction inbound/both.
+      // El destino default = primer agente activo. Asi las entrantes funcionan
+      // out-of-the-box, sin requerir que el admin configure DIDs manualmente.
+      if (dids.length === 0) {
+        const trunkCallerIds: any[] = await this.ds.query(
+          `SELECT DISTINCT caller_id FROM sip_trunks
+             WHERE company_id = ? AND direction IN ('inbound','both')
+             AND caller_id IS NOT NULL AND caller_id != ''`,
+          [cid],
+        );
+        const firstAgent = await this.ds.query(
+          `SELECT id FROM agents WHERE company_id = ? AND is_active = 1 ORDER BY id LIMIT 1`,
+          [cid],
+        );
+        const fallbackAgentId = firstAgent[0]?.id;
+        if (fallbackAgentId) {
+          dids = trunkCallerIds.map((t: any) => ({
+            number: t.caller_id,
+            description: 'auto: troncal entrante → primer agente',
+            inbound_destination_type: 'agent',
+            inbound_destination_id: fallbackAgentId,
+          }));
+          // Tambien agregar variantes sin prefijo internacional 57XX...
+          const variants: any[] = [];
+          for (const d of dids) {
+            const noPrefix = String(d.number).replace(/^57/, '');
+            if (noPrefix !== d.number && noPrefix.length >= 7) {
+              variants.push({ ...d, number: noPrefix, description: 'auto: variante sin prefijo 57' });
+            }
+          }
+          dids.push(...variants);
+          if (dids.length > 0) {
+            warnings.push(`Empresa ${cid}: sin DIDs en BD, generadas ${dids.length} entradas implicitas → agente ${fallbackAgentId}`);
+          }
+        }
+      }
 
       // Festivos (solo no-recurrentes y los del año actual o futuros)
       const holidays: any[] = await this.ds.query(
