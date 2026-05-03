@@ -63,13 +63,13 @@ export default function SchedulesPage() {
 
   async function deleteHoliday(id: number, name: string) {
     const ok = await confirmAsync({
-      title: 'Eliminar feriado',
-      message: <>Vas a eliminar el feriado <strong>"{name}"</strong>.</>,
+      title: 'Eliminar festivo',
+      message: <>Vas a eliminar el festivo <strong>"{name}"</strong>.</>,
       variant: 'danger',
       confirmText: 'Sí, eliminar',
     });
     if (!ok) return;
-    try { await api.delete(`/schedules/holidays/${id}`); toastShow(`Feriado "${name}" eliminado`, 'success'); }
+    try { await api.delete(`/schedules/holidays/${id}`); toastShow(`Festivo "${name}" eliminado`, 'success'); }
     catch (e: any) { toastShow(e?.response?.data?.error?.message ?? 'Error al eliminar', 'danger'); return; }
     reload();
   }
@@ -78,7 +78,7 @@ export default function SchedulesPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Horarios y Feriados</h2>
+          <h2 className="text-2xl font-semibold text-slate-900">Horarios y Festivos</h2>
           <p className="text-slate-500 mt-1">Define cuándo está abierto tu Call Center y los días especiales.</p>
         </div>
 
@@ -130,15 +130,15 @@ export default function SchedulesPage() {
           </div>
         </div>
 
-        {/* Feriados */}
+        {/* Festivos */}
         <div className="rounded-xl border border-slate-200 bg-white">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-brand-600" />
-              <h3 className="font-semibold text-slate-900">Feriados</h3>
+              <h3 className="font-semibold text-slate-900">Festivos</h3>
             </div>
             <button onClick={() => setOpenHoliday(true)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium">
-              <Plus className="w-3 h-3" /> Nuevo feriado
+              <Plus className="w-3 h-3" /> Nuevo festivo
             </button>
           </div>
           <table className="w-full text-sm">
@@ -153,7 +153,7 @@ export default function SchedulesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {!loading && holidays.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Sin feriados.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Sin festivos.</td></tr>
               )}
               {holidays.map(h => (
                 <tr key={h.id}>
@@ -290,7 +290,7 @@ function HolidayModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold">Nuevo feriado</h3>
+          <h3 className="text-lg font-semibold">Nuevo festivo</h3>
           <button onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-3">

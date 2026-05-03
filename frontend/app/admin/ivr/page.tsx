@@ -68,7 +68,7 @@ export default function IvrListPage() {
         </div>
 
         <Link
-          href="/admin/ivr/audio"
+          href="/admin/ivr/audios"
           className="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700"
         >
           <Mic className="w-4 h-4" /> Gestionar audios IVR →
