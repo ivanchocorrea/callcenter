@@ -290,16 +290,18 @@ export class SipClient {
     if (this.ringbackCtx) return;
     const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
+    let ctx: AudioContext;
     try {
-      this.ringbackCtx = new AC();
+      ctx = new AC();
       // Browsers (Chrome/Safari) crean el AudioContext en estado 'suspended'.
       // Si no hacemos resume(), nunca suena. Se debe llamar dentro de un
       // user gesture — en `dial()` si lo es, en bindSession listener tal vez no.
-      this.ringbackCtx.resume().catch(() => undefined);
+      ctx.resume().catch(() => undefined);
     } catch (e) {
       console.warn('[SipClient] No se pudo crear AudioContext para ringback:', e);
       return;
     }
+    this.ringbackCtx = ctx;
     this.ringbackStopped = false;
     const beep = () => {
       if (this.ringbackStopped || !this.ringbackCtx) return;
