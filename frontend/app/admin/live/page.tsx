@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
+import { useRealtime } from '@/lib/realtime/realtime-context';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneOff, Clock, Users, Activity, Coffee,
   GraduationCap, Power, Pause, Headphones, X, Search, Filter, AlertTriangle,
@@ -39,6 +40,10 @@ interface Call {
   agentId?: number | null;
   duration_seconds?: number | null;
   durationSeconds?: number | null;
+  queue_wait_seconds?: number | null;
+  queueWaitSeconds?: number | null;
+  talk_seconds?: number | null;
+  talkSeconds?: number | null;
   queue_id?: number | null;
   queueId?: number | null;
   campaign_id?: number | null;
@@ -119,10 +124,27 @@ export default function LivePage() {
 
   useEffect(() => { reload(); }, []);
   useEffect(() => {
-    const dataTimer = setInterval(reload, 3000); // datos cada 3s
+    // Polling como backup si el WebSocket se cae (cada 8s, no 3s — los
+    // eventos en vivo llegan via socket.io y refrescamos antes).
+    const dataTimer = setInterval(reload, 8000);
     const tickTimer = setInterval(() => setTick(t => t + 1), 1000); // timers cada 1s
     return () => { clearInterval(dataTimer); clearInterval(tickTimer); };
   }, []);
+
+  // Suscripcion a eventos realtime via WebSocket (socket.io). El backend
+  // emite estos eventos cuando AMI detecta cambios en la telefonia:
+  //  - call.incoming → entrante registrada en BD
+  //  - call.answered → bridge completado (agente atendio)
+  //  - call.ended → hangup
+  //  - agent.status_changed → cambio de estado (busy/available/etc)
+  // Cuando llegan, hacemos reload inmediato → datos en VIVO real.
+  const realtime = useRealtime();
+  useEffect(() => {
+    const events = ['call.incoming', 'call.answered', 'call.ended', 'agent.status_changed'];
+    const unsubs = events.map(ev => realtime.on(ev, () => reload()));
+    return () => { unsubs.forEach(u => u()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtime.connected]);
 
   // Mapping agente → llamada activa
   const callByAgentId = useMemo(() => {
@@ -155,25 +177,38 @@ export default function LivePage() {
     }, {} as Record<string, number>);
   }, [enrichedAgents]);
 
-  // KPIs día
+  // KPIs día — calculos REALES desde tabla `calls`
   const kpis = useMemo(() => {
     const total = allCallsToday.length;
     const answered = allCallsToday.filter(c => c.status === 'completed' || c.status === 'answered').length;
     const missed = allCallsToday.filter(c => ['missed','no_answer','failed','rejected'].includes(c.status)).length;
     const abandoned = allCallsToday.filter(c => c.status === 'abandoned').length;
-    const durations = allCallsToday.filter(c => (c.durationSeconds ?? c.duration_seconds ?? 0) > 0).map(c => c.durationSeconds ?? c.duration_seconds ?? 0);
-    const avgDuration = durations.length ? durations.reduce((s, d) => s + d, 0) / durations.length : 0;
-    // Espera promedio (queue_wait_seconds no disponible aquí — usar tiempo en cola actual)
-    const waitTimes = queuedCalls.map(c => timeSince(c.startedAt ?? c.started_at));
-    const avgWait = waitTimes.length ? waitTimes.reduce((s, w) => s + w, 0) / waitTimes.length : 0;
-    const maxWait = waitTimes.length ? Math.max(...waitTimes) : 0;
-    // Service Level: % atendidas en menos de 20s (estimado simple)
-    const fastAnswered = allCallsToday.filter(c => {
-      const d = c.durationSeconds ?? c.duration_seconds;
-      return (c.status === 'completed' || c.status === 'answered') && d != null && d > 0;
+
+    // Duracion: prefiero talk_seconds (tiempo real hablando) sobre duration_seconds (incluye espera)
+    const talkTimes = allCallsToday.filter(c => (c.talkSeconds ?? c.talk_seconds ?? 0) > 0).map(c => c.talkSeconds ?? c.talk_seconds ?? 0);
+    const avgDuration = talkTimes.length ? talkTimes.reduce((s, d) => s + d, 0) / talkTimes.length : 0;
+
+    // Espera promedio HOY: usa queue_wait_seconds de las llamadas atendidas hoy
+    const historicalWaits = allCallsToday
+      .map(c => c.queueWaitSeconds ?? c.queue_wait_seconds ?? 0)
+      .filter(w => w > 0);
+    // Mas espera AHORA: tiempo en cola de las llamadas que estan esperando ahora
+    const currentWaits = queuedCalls.map(c => timeSince(c.startedAt ?? c.started_at));
+    const allWaits = [...historicalWaits, ...currentWaits];
+    const avgWait = allWaits.length ? allWaits.reduce((s, w) => s + w, 0) / allWaits.length : 0;
+    const maxWait = currentWaits.length ? Math.max(...currentWaits) : (historicalWaits.length ? Math.max(...historicalWaits) : 0);
+
+    // Service Level: % de llamadas atendidas en <=20s de espera (estandar SLA call center)
+    const slaTarget = 20;
+    const withinSla = allCallsToday.filter(c => {
+      const w = c.queueWaitSeconds ?? c.queue_wait_seconds ?? 0;
+      return (c.status === 'completed' || c.status === 'answered') && w <= slaTarget;
     }).length;
-    const serviceLevel = total > 0 ? (fastAnswered / total) * 100 : 0;
+    const answeredCalls = answered + abandoned; // total de "candidatos" para SLA
+    const serviceLevel = answeredCalls > 0 ? (withinSla / answeredCalls) * 100 : 0;
+
     const abandonRate = total > 0 ? (abandoned / total) * 100 : 0;
+
     return {
       total, answered, missed, abandoned,
       avgDuration: Math.round(avgDuration),
@@ -223,10 +258,16 @@ export default function LivePage() {
             <h2 className="text-2xl font-semibold text-slate-900">Wallboard / Monitoreo en vivo</h2>
             <p className="text-slate-500 mt-1 text-sm">Estado de asesores, llamadas activas y métricas en tiempo real (auto-refresh 3s).</p>
           </div>
-          <div className="text-xs">
-            <span className="inline-flex items-center gap-1 text-emerald-600 px-3 py-1 bg-emerald-50 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> En vivo
-            </span>
+          <div className="text-xs flex items-center gap-2">
+            {realtime.connected ? (
+              <span className="inline-flex items-center gap-1 text-emerald-600 px-3 py-1 bg-emerald-50 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> En vivo (WebSocket)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-amber-600 px-3 py-1 bg-amber-50 rounded-full" title="WebSocket caido — usando polling cada 8s">
+                <span className="w-2 h-2 rounded-full bg-amber-500" /> Polling 8s
+              </span>
+            )}
           </div>
         </div>
 
@@ -325,14 +366,15 @@ export default function LivePage() {
         </div>
 
         {/* KPIs del día */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <Kpi icon={PhoneIncoming} label="Atendidas hoy" value={kpis.answered} color="bg-emerald-50 text-emerald-700" />
           <Kpi icon={PhoneOff} label="Perdidas hoy" value={kpis.missed} color="bg-rose-50 text-rose-700" />
           <Kpi icon={Clock} label="Abandonadas" value={kpis.abandoned} color="bg-amber-50 text-amber-700" />
           <Kpi icon={Clock} label="Dur prom" value={fmtDur(kpis.avgDuration)} color="bg-slate-50 text-slate-700" />
           <Kpi icon={Hourglass} label="Espera prom" value={fmtDur(kpis.avgWait)} color="bg-slate-50 text-slate-700" />
           <Kpi icon={AlertTriangle} label="Espera máx" value={fmtDur(kpis.maxWait)} color="bg-amber-50 text-amber-700" />
-          <Kpi icon={CheckCircle2} label="Tasa abandono" value={`${kpis.abandonRate}%`} color="bg-rose-50 text-rose-700" />
+          <Kpi icon={CheckCircle2} label="SLA <20s" value={`${kpis.serviceLevel}%`} color="bg-emerald-50 text-emerald-700" />
+          <Kpi icon={PhoneOff} label="Tasa abandono" value={`${kpis.abandonRate}%`} color="bg-rose-50 text-rose-700" />
         </div>
 
         {/* ============ Filtros + búsqueda ============ */}
