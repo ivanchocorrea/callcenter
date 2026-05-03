@@ -118,6 +118,18 @@ export class AsteriskConfigService {
         `aors=${ext}`,
         'context=from-internal',
         `callerid="${a.display_name.replace(/"/g, '')}" <${ext}>`,
+        // Confiar en el CALLERID del canal saliente cuando Asterisk hace
+        // Dial(PJSIP/<ext>) — sin esto, Asterisk pone el callerid del
+        // endpoint en el From URI del INVITE al agente, y en entrantes
+        // el navegador muestra el DID/callerid configurado en lugar del
+        // numero real del que llama. Con trust_id_outbound=yes + un
+        // Set(CALLERID(num)=...) en el dialplan, el From URI lleva el
+        // caller real.
+        'trust_id_outbound=yes',
+        // Permitir que Asterisk envie/reciba updates de connected line
+        // via re-INVITE (RFC 4916) — para reflejar caller cambiado en
+        // medio de la llamada (transferencias, etc).
+        'send_connected_line=yes',
         '',
         `[${ext}-auth]`,
         'type=auth',
