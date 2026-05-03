@@ -47,79 +47,45 @@ interface NavItem {
   role?: string;
 }
 
-const NAV_BY_ROLE: Record<string, NavItem[]> = {
+interface NavSection {
+  title?: string;  // titulo del grupo (si no hay → seccion sin header, items sueltos)
+  items: NavItem[];
+}
+
+// Helper para items planos (compat con la lista vieja)
+function flat(items: NavItem[]): NavSection[] {
+  return [{ items }];
+}
+
+const NAV_BY_ROLE: Record<string, NavSection[]> = {
   super_admin: [
-    { href: '/super-admin', label: '🌐 Dashboard SaaS', icon: LayoutDashboard },
-    { href: '/super-admin/companies', label: '🏢 Empresas', icon: Building2 },
-    { href: '/super-admin/users', label: '👥 Todos los usuarios', icon: Users },
-    { href: '/super-admin/plans', label: '💳 Planes', icon: CreditCard },
-    { href: '/super-admin/audit', label: '🛡️ Auditoría', icon: ShieldCheck },
-    { href: '/super-admin/security', label: '🔒 Seguridad (fail2ban)', icon: ShieldCheck },
-    { href: '/super-admin/monitoring', label: '📡 Monitoreo', icon: Activity },
-    // ── Acceso a vistas de empresa (para configurar/probar) ──
-    { href: '/admin', label: '── Vista Empresa ──', icon: LayoutDashboard },
-    { href: '/admin/users', label: 'Usuarios', icon: Users },
-    { href: '/admin/agents', label: 'Agentes', icon: HeadphonesIcon },
-    { href: '/admin/sip-trunks', label: 'Troncales SIP', icon: PhoneCall },
-    { href: '/admin/asterisk', label: 'Asterisk (telefonía)', icon: PhoneCall },
-    { href: '/admin/queues', label: 'Colas', icon: ListTree },
-    { href: '/admin/schedules', label: 'Horarios', icon: Activity },
-    { href: '/admin/ivr', label: 'IVR', icon: Mic },
-    { href: '/admin/ai-providers', label: 'Proveedores IA', icon: KeyRound },
-    { href: '/admin/ai-bots', label: 'Bots IA', icon: Bot },
-    { href: '/admin/ai-prompts', label: 'Prompts IA', icon: Wrench },
-    { href: '/admin/customers', label: 'Clientes / CRM', icon: Users },
-    { href: '/admin/imports', label: 'Importar', icon: Database },
-    { href: '/admin/dnc', label: 'Lista DNC', icon: ShieldCheck },
-    { href: '/admin/dispositions', label: 'Tipificaciones', icon: ClipboardCheck },
-    { href: '/admin/campaigns', label: 'Campañas', icon: Megaphone },
-    { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
-    { href: '/admin/whatsapp', label: 'WhatsApp', icon: MessageSquare },
-    { href: '/admin/sms-providers', label: 'Proveedores SMS', icon: KeyRound },
-    { href: '/admin/sms', label: 'Enviar SMS', icon: MessageSquare },
-    { href: '/admin/storage-providers', label: 'Almacenamiento', icon: HardDrive },
-    { href: '/admin/automations', label: 'Automatizaciones', icon: Workflow },
-    { href: '/admin/recordings', label: 'Grabaciones', icon: FileText },
-    { href: '/admin/reports', label: 'Reportes', icon: FileText },
-    { href: '/admin/quality', label: 'Calidad', icon: ClipboardCheck },
-    { href: '/admin/billing', label: 'Facturación', icon: CreditCard },
-    { href: '/admin/maintenance', label: 'Mantenimiento', icon: Wrench },
-    { href: '/admin/settings', label: 'Configuración', icon: Settings },
-    // ── Vista supervisor también ──
-    { href: '/supervisor', label: '── Supervisor ──', icon: Activity },
-    { href: '/supervisor/calls', label: 'Llamadas', icon: PhoneCall },
+    { items: [
+      { href: '/super-admin', label: '🌐 Dashboard SaaS', icon: LayoutDashboard },
+      { href: '/super-admin/companies', label: '🏢 Empresas', icon: Building2 },
+      { href: '/super-admin/users', label: '👥 Todos los usuarios', icon: Users },
+      { href: '/super-admin/plans', label: '💳 Planes', icon: CreditCard },
+      { href: '/super-admin/audit', label: '🛡️ Auditoría', icon: ShieldCheck },
+      { href: '/super-admin/security', label: '🔒 Seguridad (fail2ban)', icon: ShieldCheck },
+      { href: '/super-admin/monitoring', label: '📡 Monitoreo', icon: Activity },
+    ] },
+    { title: '── Vista Empresa ──', items: [
+      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/admin/live', label: 'Monitoreo en vivo', icon: Activity },
+    ] },
+    ...adminCompanySections(),
+    { title: '── Supervisor ──', items: [
+      { href: '/supervisor', label: 'Supervisor', icon: Activity },
+      { href: '/supervisor/calls', label: 'Llamadas', icon: PhoneCall },
+    ] },
   ],
   company_admin: [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/users', label: 'Usuarios', icon: Users },
-    { href: '/admin/agents', label: 'Agentes', icon: HeadphonesIcon },
-    { href: '/admin/sip-trunks', label: 'Troncales SIP', icon: PhoneCall },
-    { href: '/admin/asterisk', label: 'Asterisk (telefonía)', icon: PhoneCall },
-    { href: '/admin/queues', label: 'Colas', icon: ListTree },
-    { href: '/admin/schedules', label: 'Horarios', icon: Activity },
-    { href: '/admin/ivr', label: 'IVR', icon: Mic },
-    { href: '/admin/ai-providers', label: 'Proveedores IA', icon: KeyRound },
-    { href: '/admin/ai-bots', label: 'Bots IA', icon: Bot },
-    { href: '/admin/ai-prompts', label: 'Prompts IA', icon: Wrench },
-    { href: '/admin/customers', label: 'Clientes / CRM', icon: Users },
-    { href: '/admin/imports', label: 'Importar', icon: Database },
-    { href: '/admin/dnc', label: 'Lista DNC', icon: ShieldCheck },
-    { href: '/admin/dispositions', label: 'Tipificaciones', icon: ClipboardCheck },
-    { href: '/admin/campaigns', label: 'Campañas', icon: Megaphone },
-    { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
-    { href: '/admin/whatsapp', label: 'WhatsApp', icon: MessageSquare },
-    { href: '/admin/sms-providers', label: 'Proveedores SMS', icon: KeyRound },
-    { href: '/admin/sms', label: 'Enviar SMS', icon: MessageSquare },
-    { href: '/admin/automations', label: 'Automatizaciones', icon: Workflow },
-    { href: '/admin/storage-providers', label: 'Almacenamiento', icon: HardDrive },
-    { href: '/admin/recordings', label: 'Grabaciones', icon: FileText },
-    { href: '/admin/reports', label: 'Reportes', icon: FileText },
-    { href: '/admin/quality', label: 'Calidad', icon: ClipboardCheck },
-    { href: '/admin/billing', label: 'Facturación', icon: CreditCard },
-    { href: '/admin/maintenance', label: 'Mantenimiento', icon: Wrench },
-    { href: '/admin/settings', label: 'Configuración', icon: Settings },
+    { items: [
+      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/admin/live', label: 'Monitoreo en vivo', icon: Activity },
+    ] },
+    ...adminCompanySections(),
   ],
-  supervisor: [
+  supervisor: flat([
     { href: '/supervisor', label: 'Dashboard en vivo', icon: LayoutDashboard },
     { href: '/supervisor/queues', label: 'Colas', icon: ListTree },
     { href: '/supervisor/agents', label: 'Agentes', icon: HeadphonesIcon },
@@ -127,13 +93,63 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { href: '/supervisor/recordings', label: 'Grabaciones', icon: FileText },
     { href: '/supervisor/reports', label: 'Reportes', icon: FileText },
     { href: '/supervisor/quality', label: 'Calidad', icon: ClipboardCheck },
-  ],
-  agent: [
+  ]),
+  agent: flat([
     { href: '/agent/dialer', label: 'Marcador', icon: PhoneOutgoing },
     { href: '/agent', label: 'Reportes', icon: LayoutDashboard },
     { href: '/agent/customers', label: 'Clientes', icon: Users },
-  ],
+  ]),
 };
+
+// Secciones agrupadas para admin de empresa (compartido entre super_admin y company_admin).
+function adminCompanySections(): NavSection[] {
+  return [
+    { title: 'Configuración', items: [
+      { href: '/admin/sip-trunks', label: 'Troncales SIP', icon: PhoneCall },
+      { href: '/admin/asterisk', label: 'Asterisk', icon: PhoneCall },
+      { href: '/admin/test-calls', label: 'Pruebas de llamada', icon: Activity },
+      { href: '/admin/queues', label: 'Colas', icon: ListTree },
+      { href: '/admin/schedules', label: 'Horarios', icon: Activity },
+      { href: '/admin/ivr', label: 'IVR', icon: Mic },
+      { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
+      { href: '/admin/dnc', label: 'Lista DNC', icon: ShieldCheck },
+    ] },
+    { title: 'IA', items: [
+      { href: '/admin/ai-providers', label: 'Proveedores IA', icon: KeyRound },
+      { href: '/admin/ai-bots', label: 'Bots IA', icon: Bot },
+      { href: '/admin/ai-prompts', label: 'Prompts IA', icon: Wrench },
+    ] },
+    { title: 'Mensajería', items: [
+      { href: '/admin/whatsapp', label: 'WhatsApp', icon: MessageSquare },
+      { href: '/admin/sms-providers', label: 'Proveedores SMS', icon: KeyRound },
+      { href: '/admin/sms', label: 'Enviar SMS', icon: MessageSquare },
+      { href: '/admin/automations', label: 'Automatizaciones', icon: Workflow },
+    ] },
+    { title: 'Reportes', items: [
+      { href: '/admin/reports', label: 'Reportes', icon: FileText },
+      { href: '/admin/recordings', label: 'Grabaciones', icon: FileText },
+      { href: '/admin/storage-providers', label: 'Almacenamiento', icon: HardDrive },
+    ] },
+    { title: 'CRM', items: [
+      { href: '/admin/customers', label: 'Clientes / CRM', icon: Users },
+      { href: '/admin/imports', label: 'Importar clientes', icon: Database },
+      { href: '/admin/campaigns', label: 'Campañas', icon: Megaphone },
+    ] },
+    { title: 'Marca', items: [
+      { href: '/admin/settings', label: 'Configuración', icon: Settings },
+    ] },
+    { title: 'Usuarios', items: [
+      { href: '/admin/users', label: 'Usuarios', icon: Users },
+      { href: '/admin/agents', label: 'Agentes', icon: HeadphonesIcon },
+      { href: '/admin/dispositions', label: 'Tipificaciones', icon: ClipboardCheck },
+      { href: '/admin/quality', label: 'Calidad', icon: ClipboardCheck },
+    ] },
+    { title: 'Cuenta', items: [
+      { href: '/admin/billing', label: 'Facturación', icon: CreditCard },
+      { href: '/admin/maintenance', label: 'Mantenimiento', icon: Wrench },
+    ] },
+  ];
+}
 
 function pickPrimaryRole(roles: string[]): keyof typeof NAV_BY_ROLE {
   if (roles.includes('super_admin')) return 'super_admin';
@@ -209,33 +225,43 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="text-xs text-slate-400">{role.replace('_', ' ')}</div>
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3 space-y-0.5">
-          {/* Item activo = el href MAS LARGO que matchea la ruta actual.
-              Antes la logica era `pathname === href || pathname.startsWith(href + '/')`,
-              que marcaba como activos items con href cortos (ej. Dashboard
-              '/admin') cuando estabamos en sub-rutas (ej. '/admin/imports') →
-              2 items "pegados" en azul al mismo tiempo. */}
+        <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3 space-y-3">
+          {/* Item activo = el href MAS LARGO que matchea la ruta actual
+              (entre TODOS los items de TODAS las secciones). Asi 2 items
+              de secciones distintas no se marcan a la vez. */}
           {(() => {
-            const matching = items.filter(it => pathname === it.href || pathname.startsWith(it.href + '/'));
+            const allItems = items.flatMap(s => s.items);
+            const matching = allItems.filter(it => pathname === it.href || pathname.startsWith(it.href + '/'));
             const activeHref = matching.length > 0
               ? matching.reduce((a, b) => (b.href.length > a.href.length ? b : a)).href
               : null;
-            return items.map(item => {
-              const Icon = item.icon;
-              const active = item.href === activeHref;
-              return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${
-                  active ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </Link>
-            );
-            });
+            return items.map((section, sIdx) => (
+              <div key={section.title ?? `s-${sIdx}`}>
+                {section.title && (
+                  <div className="px-3 mb-1 text-[10px] uppercase tracking-wider font-semibold text-slate-500">
+                    {section.title}
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  {section.items.map(item => {
+                    const Icon = item.icon;
+                    const active = item.href === activeHref;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${
+                          active ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ));
           })()}
         </nav>
       </aside>
