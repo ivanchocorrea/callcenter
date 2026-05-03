@@ -35,8 +35,26 @@ export class InboundDispatcherService implements OnModuleInit {
   }
 
   private async handle(event: any): Promise<void> {
-    if (!event || event.source !== 'ari') return;
-    const { name, payload } = event;
+    if (!event) return;
+    const { name, payload, source } = event;
+
+    // ----- AMI: UserEvent disparado desde el dialplan from-trunk -----
+    // Sirve para registrar entrantes en `calls` cuando el dialplan no
+    // pasa por Stasis (mantiene Dial directo al endpoint del agente).
+    if (source === 'ami') {
+      if (name === 'UserEvent' && (payload?.userevent === 'CallcenterInbound' || payload?.UserEvent === 'CallcenterInbound')) {
+        await this.onAmiInbound(payload);
+        return;
+      }
+      if (name === 'UserEvent' && (payload?.userevent === 'CallcenterInboundEnd' || payload?.UserEvent === 'CallcenterInboundEnd')) {
+        await this.onAmiInboundEnd(payload);
+        return;
+      }
+      return;
+    }
+
+    // ----- ARI events (flow Stasis, no usado actualmente) -----
+    if (source !== 'ari') return;
 
     if (name === 'StasisStart') {
       await this.onStasisStart(payload);
@@ -44,6 +62,98 @@ export class InboundDispatcherService implements OnModuleInit {
       await this.onChannelStateChange(payload);
     } else if (name === 'StasisEnd' || name === 'ChannelHangupRequest' || name === 'ChannelDestroyed') {
       await this.onChannelEnd(payload);
+    }
+  }
+
+  /**
+   * Handler de UserEvent CallcenterInbound (AMI). Crea la fila en `calls`
+   * con direction=inbound apenas el dialplan recibe la llamada (antes del
+   * Dial al agente). Idempotente por asterisk_uniqueid.
+   */
+  private async onAmiInbound(payload: any): Promise<void> {
+    const channelId: string = payload?.channel ?? payload?.Channel ?? '';
+    const did: string = payload?.did ?? payload?.DID ?? '';
+    const fromNumber: string = payload?.from ?? payload?.From ?? '';
+    const companyIdRaw = payload?.company ?? payload?.Company ?? '1';
+    const companyId = parseInt(String(companyIdRaw), 10) || 1;
+    if (!channelId) return;
+
+    // Idempotente: si ya existe (por uniqueid), no duplicar
+    const existing = await this.calls.findByUniqueid(channelId);
+    if (existing) return;
+
+    try {
+      const call = await this.calls.create({
+        companyId,
+        asteriskUniqueid: channelId,
+        asteriskLinkedid: channelId,
+        direction: 'inbound',
+        fromNumber: fromNumber || null as any,
+        toNumber: did,
+        didNumber: did,
+      });
+
+      // Lookup customer por telefono
+      const phone = (fromNumber ?? '').replace(/\s+/g, '');
+      if (phone) {
+        const customers = await this.ds.query(
+          `SELECT id FROM customers WHERE company_id = ? AND primary_phone = ? LIMIT 1`,
+          [companyId, phone],
+        );
+        if (customers[0]) {
+          await this.calls.patch(Number(call.id), { customerId: Number(customers[0].id) });
+        }
+      }
+
+      this.logger.log(`Inbound registrada en BD: call_id=${call.id} from=${fromNumber} did=${did}`);
+
+      await this.bus.publish(`co:${companyId}:call`, {
+        type: 'call.incoming',
+        call_id: Number(call.id),
+        from_number: fromNumber,
+        to_number: did,
+        did_number: did,
+        occurred_at: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      this.logger.warn(`No se pudo registrar inbound channel=${channelId}: ${e?.message}`);
+    }
+  }
+
+  /**
+   * Handler de UserEvent CallcenterInboundEnd (AMI). Actualiza status y
+   * duration de la entrante segun el DIALSTATUS de Asterisk:
+   * - ANSWER → completed (con duration)
+   * - NOANSWER, BUSY, CANCEL → missed
+   * - CONGESTION, CHANUNAVAIL → failed
+   */
+  private async onAmiInboundEnd(payload: any): Promise<void> {
+    const channelId: string = payload?.channel ?? payload?.Channel ?? '';
+    const dialStatus: string = (payload?.dialstatus ?? payload?.DialStatus ?? '').toUpperCase();
+    const durationRaw = payload?.duration ?? payload?.Duration ?? '0';
+    const duration = parseInt(String(durationRaw), 10) || 0;
+    if (!channelId) return;
+
+    const call = await this.calls.findByUniqueid(channelId);
+    if (!call) return;
+
+    let status: any = 'completed';
+    if (dialStatus === 'ANSWER') status = 'completed';
+    else if (['NOANSWER', 'CANCEL', 'BUSY'].includes(dialStatus)) status = 'no_answer';
+    else if (['CONGESTION', 'CHANUNAVAIL'].includes(dialStatus)) status = 'failed';
+
+    try {
+      await this.calls.setStatus(Number(call.id), status);
+      // Actualizar talk_seconds y duration_seconds
+      if (duration > 0) {
+        await this.calls.patch(Number(call.id), {
+          talkSeconds: duration,
+          durationSeconds: duration,
+        });
+      }
+      this.logger.log(`Inbound finalizada: call_id=${call.id} status=${status} dur=${duration}s (DIALSTATUS=${dialStatus})`);
+    } catch (e: any) {
+      this.logger.warn(`Error actualizando inbound end channel=${channelId}: ${e?.message}`);
     }
   }
 

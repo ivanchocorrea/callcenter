@@ -48,9 +48,15 @@ desktop.ini
 coverage/
 .nyc_output/
 
-# Recordings (audios de llamadas, no subir al repo)
-recordings/
+# Recordings (audios reales de llamadas, no subir al repo)
+# IMPORTANTE: solo ignorar la carpeta de DATOS (recordings/ y recordings-data/),
+# NO ignorar paginas frontend ni modulos backend que se llamen "recordings".
+/recordings/
 recordings-data/
+!frontend/app/admin/recordings/
+!frontend/app/admin/recordings/**
+!backend/src/recordings/
+!backend/src/recordings/**
 *.wav
 *.mp3
 *.gsm
