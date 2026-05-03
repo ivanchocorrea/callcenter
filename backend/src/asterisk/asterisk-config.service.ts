@@ -251,18 +251,22 @@ export class AsteriskConfigService {
         `aors=${trunkId}-aor`,
         `outbound_auth=${trunkId}-auth`,
         'direct_media=no',
-        // trust_id_inbound=yes: respetar el caller ID del INVITE entrante en
-        // vez de sobreescribirlo con el `callerid=` del endpoint. Sin esto,
-        // cuando una llamada entra por esta troncal, Asterisk fija
-        // CALLERID(num) = callerid del endpoint (ej. el DID), perdiendo el
-        // numero real del que llama. Confirmado: con callerid=573028209813
-        // y trust_id_inbound=false, el dialplan recibia CALLERID(num) =
-        // 573028209813 en vez de 3007828286 (caller real del provider).
+        // trust_id_inbound=yes: respeta P-Asserted-Identity / Remote-Party-ID
+        // del peer (no afecta el From, pero ayuda con providers que mandan
+        // identidad por esos headers).
         'trust_id_inbound=yes',
         `from_user=${t.username}`,
         `from_domain=${t.domain || t.host}`,
       );
-      if (t.caller_id) lines.push(`callerid=${t.caller_id}`);
+      // callerid del endpoint SOLO si la troncal puede iniciar llamadas
+      // (outbound o both). En troncales solo-entrantes, el callerid del
+      // endpoint SOBREESCRIBE el caller del INVITE entrante → el dialplan
+      // recibe el DID en vez del caller real. Confirmado en debugging:
+      // con callerid=573028209813 en endpoint solo entrante, el log
+      // mostraba "DID hospital entrante de 573028209813" en vez del
+      // 3007828286 real del provider. Por eso el banner del agente
+      // mostraba el DID en lugar del telefono del cliente.
+      if (t.caller_id && allowOutbound) lines.push(`callerid=${t.caller_id}`);
       if (t.nat_enabled) {
         lines.push('rtp_symmetric=yes', 'force_rport=yes');
         if (t.rewrite_contact) lines.push('rewrite_contact=yes');
