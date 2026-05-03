@@ -197,6 +197,16 @@ export class SipClient {
 
   private handleIncoming(invitation: Invitation): void {
     this.bindSession(invitation);
+    // Manejar CANCEL del lado del caller (timeout, colgaron antes que conteste).
+    // Sin esto, en algunos escenarios el state listener no llega a disparar
+    // 'Terminated' y el banner+ringtone del frontend queda sonando hasta F5.
+    invitation.delegate = {
+      ...(invitation.delegate ?? {}),
+      onCancel: () => {
+        this.emit({ type: 'ended', session: invitation, cause: 'caller-cancelled' });
+        if (this.currentSession === invitation) this.currentSession = null;
+      },
+    };
     this.emit({
       type: 'incoming',
       session: invitation,

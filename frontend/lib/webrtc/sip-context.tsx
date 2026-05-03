@@ -183,6 +183,19 @@ export function SipProvider({ children }: { children: ReactNode }) {
     }
   }, [user, stop]);
 
+  // Timeout de seguridad — si pasaron 45s desde que llego un INVITE entrante
+  // y todavia no se contesto/cancelo, limpiamos el state a la fuerza.
+  // Cubre el bug en que algunos providers no envian CANCEL claro y el state
+  // listener de SIP.js no triggea, dejando el banner+ringtone sonando hasta
+  // que el usuario refresca con F5.
+  useEffect(() => {
+    if (!incoming) return;
+    const safety = setTimeout(() => {
+      setIncoming(null);
+    }, 45000);
+    return () => clearTimeout(safety);
+  }, [incoming]);
+
   const value: SipContextValue = {
     state, error, incoming, active,
     start, stop, dial, answer, hangup, toggleHold, toggleMute, sendDtmf,
