@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, MessageCircle, Trash2, Copy, Check, Send, Eye, EyeOff } from 'lucide-react';
+import { Plus, MessageCircle, Trash2, Copy, Check, Send, Eye, EyeOff, Webhook, Key } from 'lucide-react';
 import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 interface Account {
@@ -34,6 +34,12 @@ export default function WhatsappPage() {
   const [loading, setLoading] = useState(true);
   const [openCreate, setOpenCreate] = useState(false);
   const [openSend, setOpenSend] = useState<Account | null>(null);
+  const [showWebhook, setShowWebhook] = useState<Account | null>(null);
+
+  function copy(text: string, msg = 'Copiado') {
+    navigator.clipboard.writeText(text);
+    toastShow(msg, 'success');
+  }
 
   function reload() {
     setLoading(true);
@@ -95,7 +101,10 @@ export default function WhatsappPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => setOpenSend(a)} className="text-brand-600 hover:text-brand-700 mr-3" title="Enviar mensaje">
+                      <button onClick={() => setShowWebhook(a)} className="text-slate-500 hover:text-slate-900 mr-2" title="Ver Webhook URL y Verify Token (para Meta)">
+                        <Webhook className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setOpenSend(a)} className="text-brand-600 hover:text-brand-700 mr-2" title="Enviar mensaje de prueba">
                         <Send className="w-4 h-4" />
                       </button>
                       <button onClick={async () => {
@@ -169,6 +178,7 @@ export default function WhatsappPage() {
 
       {openCreate && <AccountModal onClose={() => setOpenCreate(false)} onSaved={reload} />}
       {openSend && <SendModal account={openSend} onClose={() => setOpenSend(null)} onSent={reload} />}
+      {showWebhook && <WebhookModal account={showWebhook} onClose={() => setShowWebhook(null)} onCopy={copy} />}
     </AppShell>
   );
 }
@@ -373,6 +383,84 @@ function SendModal({ account, onClose, onSent }: { account: Account; onClose: ()
           <button onClick={onClose} className="px-4 py-2 text-sm">Cerrar</button>
           <button onClick={send as any} disabled={submitting} className="px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium disabled:opacity-50">
             <Send className="w-4 h-4 inline mr-1" /> {submitting ? 'Enviando…' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WebhookModal({ account, onClose, onCopy }: {
+  account: Account;
+  onClose: () => void;
+  onCopy: (text: string, msg?: string) => void;
+}) {
+  // Construimos la URL publica del webhook con el host configurado.
+  const apiHost = typeof window !== 'undefined' ? window.location.origin : '';
+  const webhookUrl = `${apiHost}/api/webhooks/whatsapp/${account.phone_number_id}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Webhook className="w-5 h-5 text-emerald-600" /> Webhook para Meta
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">Pegá estos valores en el dashboard de Meta para configurar el webhook.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+            <strong>Pasos en Meta dashboard:</strong>
+            <ol className="list-decimal list-inside mt-1 space-y-0.5">
+              <li>Andá a tu app en developers.facebook.com</li>
+              <li>WhatsApp → Configuración → Webhook → Editar</li>
+              <li>Pegá la <strong>Callback URL</strong> y el <strong>Verify Token</strong> de abajo</li>
+              <li>Suscribite al campo <code className="bg-white px-1 rounded">messages</code></li>
+            </ol>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+              <Webhook className="w-4 h-4" /> Webhook URL (Callback URL)
+            </label>
+            <div className="flex items-center gap-2">
+              <input type="text" readOnly value={webhookUrl}
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-slate-50" />
+              <button onClick={() => onCopy(webhookUrl, 'Webhook URL copiada')}
+                className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+              <Key className="w-4 h-4" /> Verify Token
+            </label>
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+              El Verify Token lo elegiste cuando conectaste la cuenta. Por seguridad no se muestra acá.<br />
+              Si lo perdiste, podés desconectar esta cuenta y reconectarla con un nuevo verify token.
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number ID</label>
+            <div className="flex items-center gap-2">
+              <input type="text" readOnly value={account.phone_number_id}
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-slate-50" />
+              <button onClick={() => onCopy(account.phone_number_id, 'Phone ID copiado')}
+                className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium">
+            Cerrar
           </button>
         </div>
       </div>
