@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { CheckCircle2, AlertCircle, PhoneOutgoing, PhoneIncoming, Activity, Server, Headphones, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertCircle, PhoneOutgoing, PhoneIncoming, Activity, Server, Headphones, ArrowRight, Phone, X, User } from 'lucide-react';
 import Link from 'next/link';
 
 interface Trunk {
@@ -16,6 +16,7 @@ interface Trunk {
 }
 
 interface AgentEndpoint {
+  id?: number;
   extension: string;
   display_name?: string;
   online?: boolean;
@@ -36,6 +37,15 @@ export default function TestCallsPage() {
   const [testing, setTesting] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<Record<number, { ok: boolean; msg: string }>>({});
 
+  // Selector de agente para las pruebas — el admin/super_admin elige a
+  // que agente disparar la prueba (porque ellos no son agentes y no
+  // pueden marcar desde su propio softphone).
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+  const [testCallModal, setTestCallModal] = useState<'outbound' | 'inbound' | null>(null);
+  const [destNumber, setDestNumber] = useState('');
+  const [callResult, setCallResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [callRunning, setCallRunning] = useState(false);
+
   function reload() {
     setLoading(true);
     Promise.all([
@@ -44,12 +54,39 @@ export default function TestCallsPage() {
       api.get('/asterisk/status').then(r => unwrap<AsteriskStatus>(r)).catch(() => null),
     ]).then(([t, a, s]) => {
       setTrunks(t);
-      setAgents(a.map(x => ({ extension: x.extension, display_name: x.display_name ?? x.displayName, online: x.online })));
+      const mapped = a.map((x: any) => ({ id: x.id, extension: x.extension, display_name: x.display_name ?? x.displayName, online: x.online }));
+      setAgents(mapped);
+      // Auto-seleccionar el primer agente activo para que admin/super_admin
+      // puedan probar sin elegir manualmente
+      if (mapped.length > 0 && selectedAgentId == null) {
+        setSelectedAgentId(mapped[0].id ?? null);
+      }
       setAsteriskStatus(s);
     }).finally(() => setLoading(false));
   }
 
   useEffect(() => { reload(); }, []);
+
+  const selectedAgent = agents.find(a => a.id === selectedAgentId);
+
+  async function runOutboundTest(e: FormEvent) {
+    e.preventDefault();
+    if (!destNumber.trim()) { setCallResult({ ok: false, msg: 'Ingresá un número' }); return; }
+    if (!selectedAgent) { setCallResult({ ok: false, msg: 'Selecciona un agente' }); return; }
+    setCallRunning(true); setCallResult(null);
+    try {
+      // Endpoint /dial requiere ser agente. Como admin no es agente, usamos
+      // /dial/originate-as (si existe) o pedimos al admin que use el
+      // softphone del agente seleccionado.
+      const res = await api.post('/dial', { number: destNumber.trim(), agent_id: selectedAgent.id });
+      const data = unwrap<any>(res);
+      setCallResult({ ok: true, msg: `Llamada originada (call_id=${data?.callId ?? data?.call_id ?? '?'}). Asegurate de que el agente ${selectedAgent.extension} tenga el softphone abierto para contestar la pata WebRTC.` });
+    } catch (err: any) {
+      setCallResult({ ok: false, msg: err?.response?.data?.error?.message ?? 'Error' });
+    } finally {
+      setCallRunning(false);
+    }
+  }
 
   async function testTrunk(id: number) {
     setTesting(id);
@@ -173,20 +210,39 @@ export default function TestCallsPage() {
           )}
         </div>
 
+        {/* Selector de agente para las pruebas */}
+        <div className="rounded-xl border border-slate-300 bg-white p-4">
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            <User className="w-4 h-4 inline mr-1 text-brand-600" /> Agente para las pruebas
+          </label>
+          <select value={selectedAgentId ?? ''} onChange={e => setSelectedAgentId(e.target.value ? Number(e.target.value) : null)}
+            className="w-full max-w-md px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+            <option value="">— Selecciona un agente —</option>
+            {agents.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.display_name ?? `Ext ${a.extension}`} (Ext {a.extension}) {a.online ? '🟢' : '⚫'}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Como admin no sos agente, las pruebas se ejecutan EN NOMBRE de un agente seleccionado. Asegurate de que esté online para que pueda contestar la pata WebRTC.
+          </p>
+        </div>
+
         {/* Pruebas funcionales */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
             <h3 className="font-semibold text-emerald-900 mb-2 flex items-center gap-2">
               <PhoneOutgoing className="w-5 h-5" /> Prueba saliente
             </h3>
-            <ol className="list-decimal list-inside text-sm text-emerald-800 space-y-1 mb-3">
-              <li>Login como agente</li>
-              <li>Andá al marcador y marcá un número</li>
-              <li>Verificá que escuches el ringback (tu-tu) y que conecte</li>
-            </ol>
-            <Link href="/agent/dialer" className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium">
-              Abrir Marcador <ArrowRight className="w-4 h-4" />
-            </Link>
+            <p className="text-sm text-emerald-800 mb-3">
+              Originar una llamada desde el agente seleccionado a un número externo. Verificás que la troncal saliente funciona.
+            </p>
+            <button onClick={() => { setTestCallModal('outbound'); setCallResult(null); setDestNumber(''); }}
+              disabled={!selectedAgent}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
+              <Phone className="w-4 h-4" /> Iniciar prueba saliente
+            </button>
           </div>
 
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
@@ -194,17 +250,52 @@ export default function TestCallsPage() {
               <PhoneIncoming className="w-5 h-5" /> Prueba entrante
             </h3>
             <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1 mb-3">
-              <li>Login como agente, abrí el marcador</li>
-              <li>Llamá desde un celular externo a tu DID</li>
-              <li>Verificá que el banner muestre el número del que llama</li>
-              <li>Click "Contestar" y verificá audio bidireccional</li>
+              <li>Asegurate que el agente seleccionado tenga el softphone abierto</li>
+              <li>Llamá desde un celular externo al DID configurado</li>
+              <li>Verificá que el banner del agente muestre el número del que llama y suene</li>
+              <li>El log abajo te dice si llegó el INVITE</li>
             </ol>
             <Link href="/agent/dialer" className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
-              Abrir Marcador <ArrowRight className="w-4 h-4" />
+              Abrir Marcador del agente <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
       </div>
+
+      {/* Modal prueba saliente */}
+      {testCallModal === 'outbound' && selectedAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <PhoneOutgoing className="w-5 h-5 text-emerald-600" /> Prueba saliente
+              </h3>
+              <button onClick={() => setTestCallModal(null)} className="text-slate-400"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={runOutboundTest} className="px-5 py-4 space-y-3">
+              <p className="text-sm text-slate-700">
+                Llamada saliente desde <strong>{selectedAgent.display_name ?? `Ext ${selectedAgent.extension}`}</strong> a:
+              </p>
+              <input type="text" value={destNumber} onChange={e => setDestNumber(e.target.value)}
+                placeholder="Ej. 3001234567" required disabled={callRunning}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              {callResult && (
+                <div className={`text-xs px-3 py-2 rounded-lg ${callResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                  {callResult.ok ? <CheckCircle2 className="w-4 h-4 inline mr-1" /> : <AlertCircle className="w-4 h-4 inline mr-1" />}
+                  {callResult.msg}
+                </div>
+              )}
+              <div className="flex gap-2 justify-end pt-2">
+                <button type="button" onClick={() => setTestCallModal(null)} className="px-4 py-2 text-sm">Cerrar</button>
+                <button type="submit" disabled={callRunning}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50">
+                  {callRunning ? 'Llamando…' : 'Llamar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
