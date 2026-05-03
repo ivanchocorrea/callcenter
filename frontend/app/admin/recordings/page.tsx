@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap, tokens } from '@/lib/api/client';
-import { Phone, PhoneIncoming, PhoneOutgoing, PhoneOff, Search, Filter, Mic, Play, Pause, ChevronLeft, ChevronRight, Calendar, Clock, X, Hash } from 'lucide-react';
+import {
+  Phone, PhoneIncoming, PhoneOutgoing, PhoneOff, Search, Mic, Play, Pause, ChevronLeft, ChevronRight,
+  Calendar, Clock, X, Hash, MessageSquare, User, Filter, RotateCcw, Download, AudioLines, FileAudio,
+} from 'lucide-react';
 
 interface Call {
   id: number;
@@ -21,6 +24,15 @@ interface Call {
   started_at?: string;
   recordingId?: number | null;
   recording_id?: number | null;
+  agentId?: number | null;
+  agent_id?: number | null;
+}
+
+interface Agent {
+  id: number;
+  extension: string;
+  display_name?: string;
+  displayName?: string;
 }
 
 type CallType = 'all' | 'inbound' | 'outbound' | 'abandoned' | 'missed';
@@ -54,22 +66,23 @@ function fmtDate(d: string | undefined): string {
   } catch { return d; }
 }
 
-function todayMinus(days: number): string {
-  const d = new Date(); d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function RecordingsPage() {
   const [calls, setCalls] = useState<Call[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtros
+  // Filtros (estilo dashboard PBX)
+  const [agentFilter, setAgentFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<CallType>('all');
   const [search, setSearch] = useState('');
-  const [type, setType] = useState<CallType>('all');
-  const [from, setFrom] = useState(todayMinus(7));
-  const [to, setTo] = useState(todayMinus(0));
-  const [minDur, setMinDur] = useState<string>('');
-  const [maxDur, setMaxDur] = useState<string>('');
+  const [fromDate, setFromDate] = useState(todayISO());
+  const [fromTime, setFromTime] = useState('00:00:00');
+  const [toDate, setToDate] = useState(todayISO());
+  const [toTime, setToTime] = useState('23:59:59');
 
   // Paginación
   const [page, setPage] = useState(1);
@@ -80,32 +93,33 @@ export default function RecordingsPage() {
 
   function reload() {
     setLoading(true);
-    api.get('/calls?limit=500')
-      .then(r => setCalls(unwrap<Call[]>(r) ?? []))
-      .catch(() => setCalls([]))
+    Promise.all([
+      api.get('/calls?limit=500').then(r => unwrap<Call[]>(r) ?? []).catch(() => []),
+      api.get('/agents').then(r => unwrap<Agent[]>(r) ?? []).catch(() => []),
+    ])
+      .then(([cs, ags]) => { setCalls(cs); setAgents(ags); })
       .finally(() => setLoading(false));
   }
   useEffect(() => { reload(); }, []);
 
-  // Aplicar filtros (en memoria por ahora; cuando el backend tenga query
-  // params, mover esto al servidor para consultas masivas)
+  function clearFilters() {
+    setAgentFilter(''); setTypeFilter('all'); setSearch('');
+    setFromDate(todayISO()); setFromTime('00:00:00');
+    setToDate(todayISO()); setToTime('23:59:59');
+  }
+
   const filtered = useMemo(() => {
-    const fromTs = from ? new Date(from + 'T00:00:00').getTime() : 0;
-    const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
-    const minD = minDur ? Number(minDur) : 0;
-    const maxD = maxDur ? Number(maxDur) : Infinity;
+    const fromTs = new Date(`${fromDate}T${fromTime || '00:00:00'}`).getTime();
+    const toTs = new Date(`${toDate}T${toTime || '23:59:59'}`).getTime();
     const q = search.trim().toLowerCase();
     return calls.filter(c => {
       const t = new Date(c.startedAt ?? c.started_at ?? '').getTime();
       if (t < fromTs || t > toTs) return false;
-      const dur = c.durationSeconds ?? c.duration_seconds ?? 0;
-      if (dur < minD || dur > maxD) return false;
-      // Type filter
-      if (type === 'inbound' && c.direction !== 'inbound') return false;
-      if (type === 'outbound' && c.direction !== 'outbound') return false;
-      if (type === 'abandoned' && c.status !== 'abandoned') return false;
-      if (type === 'missed' && !['missed','no_answer','rejected','failed'].includes(c.status)) return false;
-      // Search en numeros
+      if (agentFilter && String(c.agentId ?? c.agent_id ?? '') !== agentFilter) return false;
+      if (typeFilter === 'inbound' && c.direction !== 'inbound') return false;
+      if (typeFilter === 'outbound' && c.direction !== 'outbound') return false;
+      if (typeFilter === 'abandoned' && c.status !== 'abandoned') return false;
+      if (typeFilter === 'missed' && !['missed','no_answer','rejected','failed'].includes(c.status)) return false;
       if (q) {
         const fr = (c.fromNumber ?? c.from_number ?? '').toLowerCase();
         const tn = (c.toNumber ?? c.to_number ?? '').toLowerCase();
@@ -114,230 +128,288 @@ export default function RecordingsPage() {
       }
       return true;
     });
-  }, [calls, search, type, from, to, minDur, maxDur]);
+  }, [calls, agentFilter, typeFilter, search, fromDate, fromTime, toDate, toTime]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageData = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [search, type, from, to, minDur, maxDur]);
+  useEffect(() => { setPage(1); }, [agentFilter, typeFilter, search, fromDate, fromTime, toDate, toTime]);
 
-  function clearFilters() {
-    setSearch(''); setType('all'); setMinDur(''); setMaxDur('');
-    setFrom(todayMinus(7)); setTo(todayMinus(0));
-  }
-
-  function recordingStreamUrl(callId: number, recordingId: number): string {
+  function recordingStreamUrl(recordingId: number): string {
     const base = api.defaults.baseURL ?? '/api';
     const token = tokens.getAccess() ?? '';
     return `${base}/recordings/${recordingId}/stream?token=${encodeURIComponent(token)}`;
   }
 
+  function exportCsv() {
+    const headers = ['ID', 'Origen', 'Destino', 'Tipo', 'Fecha', 'Duracion(s)', 'Estado', 'CallID', 'Agente'];
+    const rows = filtered.map(c => {
+      const ag = agents.find(a => a.id === (c.agentId ?? c.agent_id));
+      return [
+        c.id,
+        c.fromNumber ?? c.from_number ?? '',
+        c.toNumber ?? c.to_number ?? '',
+        c.direction,
+        c.startedAt ?? c.started_at ?? '',
+        c.durationSeconds ?? c.duration_seconds ?? 0,
+        c.status,
+        c.asteriskUniqueid ?? c.asterisk_uniqueid ?? '',
+        ag ? (ag.displayName ?? ag.display_name ?? `Ext ${ag.extension}`) : '',
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `grabaciones-${todayISO()}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <AppShell>
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Registro de llamadas (CDR) y grabaciones</h2>
-          <p className="text-slate-500 mt-1">Búsqueda avanzada de todas las llamadas + reproductor de grabaciones inline.</p>
+      <div className="space-y-4">
+        {/* === HEADER ESTILO DASHBOARD PBX === */}
+        <div className="flex items-center justify-center gap-3 py-2">
+          <div className="w-12 h-12 rounded-xl border-2 border-brand-500 bg-white flex items-center justify-center">
+            <Play className="w-6 h-6 text-brand-600 fill-brand-600" />
+          </div>
+          <h1 className="text-2xl font-light text-brand-700">Grabaciones</h1>
         </div>
 
-        {/* Filtros */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <Filter className="w-4 h-4 text-brand-600" /> Filtros
-            </h3>
-            <button onClick={clearFilters} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">
-              <X className="w-3 h-3" /> Limpiar
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Buscar (número o call_id)</label>
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="3001234567..."
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-slate-300" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Tipo</label>
-              <select value={type} onChange={e => setType(e.target.value as CallType)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white">
+        {/* === BARRA DE FILTROS HORIZONTAL === */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Agente */}
+            <FilterPill icon={User} title="Filtrar por agente">
+              <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className="bg-transparent text-sm border-0 outline-none cursor-pointer min-w-[140px]">
+                <option value="">Todos los agentes</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>{a.displayName ?? a.display_name ?? `Ext ${a.extension}`}</option>
+                ))}
+              </select>
+            </FilterPill>
+
+            {/* Tipo */}
+            <FilterPill icon={Filter} title="Tipo de llamada">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as CallType)} className="bg-transparent text-sm border-0 outline-none cursor-pointer min-w-[120px]">
                 <option value="all">Todas</option>
                 <option value="inbound">Entrantes</option>
                 <option value="outbound">Salientes</option>
                 <option value="abandoned">Abandonadas</option>
-                <option value="missed">Perdidas / fallidas</option>
+                <option value="missed">Perdidas</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Desde</label>
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                className="w-full px-2 py-2 text-sm rounded-lg border border-slate-300" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Hasta</label>
-              <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                className="w-full px-2 py-2 text-sm rounded-lg border border-slate-300" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Duración (seg)</label>
-              <div className="flex items-center gap-1">
-                <input type="number" placeholder="min" min={0} value={minDur} onChange={e => setMinDur(e.target.value)}
-                  className="w-full px-2 py-2 text-sm rounded-lg border border-slate-300" />
-                <input type="number" placeholder="max" min={0} value={maxDur} onChange={e => setMaxDur(e.target.value)}
-                  className="w-full px-2 py-2 text-sm rounded-lg border border-slate-300" />
-              </div>
-            </div>
-          </div>
-          <div className="text-xs text-slate-500">
-            {loading ? 'Cargando…' : `${filtered.length} resultado${filtered.length === 1 ? '' : 's'} en el rango.`}
+            </FilterPill>
+
+            {/* Buscar número */}
+            <FilterPill icon={Hash} title="Buscar por número o call_id">
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
+                className="bg-transparent text-sm border-0 outline-none min-w-[140px] placeholder-slate-400" />
+            </FilterPill>
+
+            {/* Desde */}
+            <FilterPill icon={Calendar}>
+              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+                className="bg-transparent text-sm border-0 outline-none cursor-pointer" />
+            </FilterPill>
+            <FilterPill icon={Clock}>
+              <input type="time" step="1" value={fromTime} onChange={e => setFromTime(e.target.value)}
+                className="bg-transparent text-sm border-0 outline-none cursor-pointer w-[80px]" />
+            </FilterPill>
+
+            <span className="text-sm text-slate-600 font-medium px-1">Hasta</span>
+
+            <FilterPill icon={Calendar}>
+              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+                className="bg-transparent text-sm border-0 outline-none cursor-pointer" />
+            </FilterPill>
+            <FilterPill icon={Clock}>
+              <input type="time" step="1" value={toTime} onChange={e => setToTime(e.target.value)}
+                className="bg-transparent text-sm border-0 outline-none cursor-pointer w-[80px]" />
+            </FilterPill>
+
+            <div className="flex-1" />
+
+            {/* Botón refresh */}
+            <button onClick={reload} title="Recargar"
+              className="w-9 h-9 rounded-full border-2 border-slate-300 hover:border-brand-500 hover:bg-brand-50 text-slate-500 hover:text-brand-600 inline-flex items-center justify-center transition">
+              <RotateCcw className="w-4 h-4" />
+            </button>
+
+            {/* Botón exportar */}
+            <button onClick={exportCsv} title="Exportar CSV"
+              className="w-9 h-9 rounded-full bg-rose-500 hover:bg-rose-600 text-white inline-flex items-center justify-center transition">
+              <Download className="w-4 h-4" />
+            </button>
+
+            {/* Limpiar filtros */}
+            {(agentFilter || typeFilter !== 'all' || search) && (
+              <button onClick={clearFilters} title="Limpiar filtros"
+                className="text-xs text-slate-500 hover:text-slate-700 px-2">
+                <X className="w-3 h-3 inline" /> Limpiar
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Tabla CDR */}
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Tipo</th>
-                <th className="text-left px-4 py-2 font-medium">Origen</th>
-                <th className="text-left px-4 py-2 font-medium">Destino</th>
-                <th className="text-left px-4 py-2 font-medium">Fecha y hora</th>
-                <th className="text-right px-4 py-2 font-medium">Duración</th>
-                <th className="text-left px-4 py-2 font-medium">Estado</th>
-                <th className="text-left px-4 py-2 font-medium">Call ID</th>
-                <th className="text-right px-4 py-2 font-medium">Grabación</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading && (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-500">Cargando…</td></tr>
-              )}
-              {!loading && pageData.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-500">
-                  <Mic className="w-8 h-8 mx-auto mb-2 text-slate-300" /> Sin llamadas en el rango seleccionado.
-                </td></tr>
-              )}
+        {/* === TABLA: cabecera con iconos (estilo dashboard) === */}
+        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+          {/* Header con SOLO iconos */}
+          <div className="grid grid-cols-12 gap-2 py-4 border-b border-slate-200 bg-slate-50/50">
+            <HeaderIcon icon={MessageSquare} colSpan={2} tooltip="Origen / Destino" />
+            <HeaderIcon icon={Calendar} colSpan={2} tooltip="Fecha y hora" />
+            <HeaderIcon icon={Filter} colSpan={1} tooltip="Tipo" />
+            <HeaderIcon icon={User} colSpan={2} tooltip="Agente" />
+            <HeaderIcon icon={Clock} colSpan={1} tooltip="Duración" />
+            <HeaderIcon icon={Mic} colSpan={2} tooltip="Estado" />
+            <HeaderIcon icon={AudioLines} colSpan={2} tooltip="Reproducir grabación" />
+          </div>
+
+          {/* Filas */}
+          {loading ? (
+            <div className="px-4 py-16 text-center text-slate-500">Cargando…</div>
+          ) : pageData.length === 0 ? (
+            <div className="px-4 py-16 text-center text-slate-400 italic">
+              No hay grabaciones
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
               {pageData.map(c => {
                 const dir = c.direction;
                 const from = c.fromNumber ?? c.from_number ?? '—';
                 const to = c.toNumber ?? c.to_number ?? '—';
                 const dur = c.durationSeconds ?? c.duration_seconds;
                 const started = c.startedAt ?? c.started_at;
-                const callId = c.asteriskUniqueid ?? c.asterisk_uniqueid ?? `db-${c.id}`;
+                const ag = agents.find(a => a.id === (c.agentId ?? c.agent_id));
                 const recId = c.recordingId ?? c.recording_id;
                 const statusInfo = STATUS_LABEL[c.status] ?? { label: c.status, color: 'bg-slate-100 text-slate-700' };
                 return (
-                  <>
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2">
+                  <div key={c.id}>
+                    <div className="grid grid-cols-12 gap-2 px-3 py-3 items-center hover:bg-slate-50 text-sm">
+                      <div className="col-span-2">
+                        <div className="font-mono text-xs text-slate-700">{dir === 'inbound' ? from : to}</div>
+                        <div className="font-mono text-[10px] text-slate-400">{dir === 'inbound' ? `→ ${to}` : `← ${from}`}</div>
+                      </div>
+                      <div className="col-span-2 text-xs text-slate-700">{fmtDate(started)}</div>
+                      <div className="col-span-1">
                         {dir === 'inbound' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600" title="Entrante"><PhoneIncoming className="w-4 h-4" /> Entrante</span>
+                          <span className="inline-flex items-center gap-1 text-emerald-600 text-xs"><PhoneIncoming className="w-3.5 h-3.5" /></span>
                         ) : dir === 'outbound' ? (
-                          <span className="inline-flex items-center gap-1 text-blue-600" title="Saliente"><PhoneOutgoing className="w-4 h-4" /> Saliente</span>
+                          <span className="inline-flex items-center gap-1 text-blue-600 text-xs"><PhoneOutgoing className="w-3.5 h-3.5" /></span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-slate-600"><Phone className="w-4 h-4" /> {dir}</span>
+                          <Phone className="w-3.5 h-3.5 text-slate-500" />
                         )}
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs">{from}</td>
-                      <td className="px-4 py-2 font-mono text-xs">{to}</td>
-                      <td className="px-4 py-2 text-slate-700">{fmtDate(started)}</td>
-                      <td className="px-4 py-2 text-right font-mono">{fmtDur(dur)}</td>
-                      <td className="px-4 py-2">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                      </div>
+                      <div className="col-span-2 text-xs">
+                        {ag ? (
+                          <>
+                            <div className="text-slate-900 font-medium truncate">{ag.displayName ?? ag.display_name ?? `Ext ${ag.extension}`}</div>
+                            <div className="text-slate-400 font-mono text-[10px]">Ext {ag.extension}</div>
+                          </>
+                        ) : (
+                          <span className="text-slate-400">— sin agente —</span>
+                        )}
+                      </div>
+                      <div className="col-span-1 text-right font-mono text-xs">{fmtDur(dur)}</div>
+                      <div className="col-span-2">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-[10px] text-slate-500" title={callId}>
-                        {callId.length > 16 ? callId.slice(0, 16) + '…' : callId}
-                      </td>
-                      <td className="px-4 py-2 text-right">
+                      </div>
+                      <div className="col-span-2 text-right">
                         {recId ? (
                           <button
                             onClick={() => setPlayingId(playingId === c.id ? null : c.id)}
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                              playingId === c.id ? 'bg-brand-600 text-white' : 'bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-slate-700'
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                              playingId === c.id
+                                ? 'bg-brand-600 text-white shadow-md'
+                                : 'bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-slate-700'
                             }`}
-                            title={playingId === c.id ? 'Ocultar' : 'Mostrar grabación'}
+                            title={playingId === c.id ? 'Ocultar reproductor' : 'Mostrar reproductor'}
                           >
                             {playingId === c.id ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                             {playingId === c.id ? 'Ocultar' : 'Escuchar'}
                           </button>
                         ) : (
-                          <span className="text-slate-300 text-xs">—</span>
+                          <span className="text-slate-300 text-xs italic">sin audio</span>
                         )}
-                      </td>
-                    </tr>
-                    {/* Reproductor inline (toggle) — lazy loading: el <audio> solo se monta cuando el usuario clickea */}
+                      </div>
+                    </div>
+                    {/* Reproductor inline (lazy: el <audio> solo se monta al click) */}
                     {playingId === c.id && recId && (
-                      <tr className="bg-brand-50/30">
-                        <td colSpan={8} className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <Mic className="w-4 h-4 text-brand-600 shrink-0" />
-                            <audio
-                              src={recordingStreamUrl(c.id, recId)}
-                              controls
-                              autoPlay
-                              preload="none"  /* no carga hasta interaccion */
-                              className="flex-1"
-                            >
-                              Tu navegador no soporta audio HTML5.
-                            </audio>
-                            <a
-                              href={recordingStreamUrl(c.id, recId)}
-                              download={`grabacion-${callId}.mp3`}
-                              className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"
-                              title="Descargar"
-                            >
-                              ↓ Descargar
-                            </a>
-                          </div>
-                        </td>
-                      </tr>
+                      <div className="px-3 py-3 bg-brand-50/40 border-t border-brand-100">
+                        <div className="flex items-center gap-3">
+                          <FileAudio className="w-5 h-5 text-brand-600 shrink-0" />
+                          <audio
+                            src={recordingStreamUrl(recId)}
+                            controls autoPlay preload="none"
+                            className="flex-1 h-10"
+                          >
+                            Tu navegador no soporta audio.
+                          </audio>
+                          <a href={recordingStreamUrl(recId)}
+                            download={`grabacion-${c.asteriskUniqueid ?? c.id}.mp3`}
+                            className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-brand-100"
+                            title="Descargar">
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
                     )}
-                  </>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          )}
+        </div>
 
-          {/* Paginación */}
+        {/* === FOOTER CON CONTEO Y PAGINACIÓN === */}
+        <div className="flex items-center justify-between py-2">
+          <div className="text-sm text-slate-600">
+            <span className="text-2xl font-light text-slate-900">{filtered.length}</span>
+            <span className="ml-2">{filtered.length === 1 ? 'Grabación' : 'Grabaciones'}</span>
+          </div>
           {filtered.length > PAGE_SIZE && (
-            <div className="border-t border-slate-100 px-4 py-3 flex items-center justify-between text-sm">
-              <div className="text-xs text-slate-500">
-                Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} de {filtered.length}
-              </div>
-              <div className="inline-flex items-center gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="p-1.5 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="px-2 text-xs text-slate-700">
-                  {page} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="p-1.5 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+            <div className="inline-flex items-center gap-2 text-sm">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="p-1.5 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-30">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-slate-700 px-2">
+                Página {page} de {totalPages}
+              </span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="p-1.5 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-30">
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           )}
         </div>
 
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
           <strong>⚠️ Sobre las grabaciones de audio:</strong> el módulo de grabación automática
-          (<code>RecordingsModule</code>) está deshabilitado en este deploy. Cuando se active, las
-          grabaciones aparecerán en la columna "Grabación" con botón "Escuchar" → reproductor inline
-          (sin descarga completa, streaming HTTP con <code>preload="none"</code> + range requests).
-          La búsqueda y filtros ya funcionan sobre todas las llamadas registradas.
+          (<code>RecordingsModule</code>) está deshabilitado. Cuando se active, aparecerá el botón
+          "Escuchar" en cada llamada con audio guardado y abrirá el reproductor inline (streaming
+          HTTP, sin descarga completa). Por ahora la búsqueda y filtros ya funcionan sobre todas
+          las llamadas registradas.
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function FilterPill({ icon: Icon, title, children }: { icon: any; title?: string; children: React.ReactNode }) {
+  return (
+    <div title={title} className="inline-flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-slate-300 bg-white hover:border-brand-500 transition">
+      <Icon className="w-4 h-4 text-brand-500" />
+      {children}
+    </div>
+  );
+}
+
+function HeaderIcon({ icon: Icon, colSpan, tooltip }: { icon: any; colSpan: number; tooltip: string }) {
+  return (
+    <div className={`col-span-${colSpan} flex items-center justify-center`} title={tooltip}>
+      <Icon className="w-5 h-5 text-brand-500" />
+    </div>
   );
 }
