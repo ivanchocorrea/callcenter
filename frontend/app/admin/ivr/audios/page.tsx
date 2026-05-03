@@ -318,7 +318,10 @@ export default function IvrAudiosPage() {
                       {playingId === a.id ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
                     </button>
 
-                    {/* Audio element oculto pero funcional */}
+                    {/* Audio invisible — UNICO elemento que reproduce, controlado
+                        por el boton custom de arriba. Antes habia DOS audios
+                        (este + un inline con autoPlay debajo) reproduciendo
+                        el mismo archivo con ms de offset → sonaba como eco. */}
                     <audio
                       ref={el => { audioRefs.current[a.id] = el; }}
                       src={audioStreamUrl(a.id)}
@@ -360,17 +363,12 @@ export default function IvrAudiosPage() {
                     </button>
                   </div>
 
-                  {/* Reproductor inline si está activo */}
+                  {/* Barra de progreso simple cuando esta sonando — usa el
+                      MISMO audio element de arriba (no monta uno nuevo). */}
                   {playingId === a.id && (
-                    <div className="mt-3 ml-16">
-                      <audio
-                        src={audioStreamUrl(a.id)}
-                        controls
-                        autoPlay
-                        onEnded={() => setPlayingId(null)}
-                        onPause={() => setPlayingId(null)}
-                        className="w-full max-w-md"
-                      />
+                    <div className="mt-3 ml-16 flex items-center gap-2 text-xs text-slate-500">
+                      <Volume2 className="w-3.5 h-3.5 text-brand-600 animate-pulse" />
+                      <span>Reproduciendo…</span>
                     </div>
                   )}
                 </div>
