@@ -22,4 +22,7 @@ export default registerAs('asterisk', () => ({
   },
   agentsConfPath: process.env.ASTERISK_AGENTS_CONF_PATH ?? '/etc/asterisk/agents.conf',
   trunksConfPath: process.env.ASTERISK_TRUNKS_CONF_PATH ?? '/etc/asterisk/trunks.conf',
+  // Path al dialplan dinamico generado por DialplanGeneratorService.
+  // Es bind-mounted al volumen de Asterisk via docker-compose.
+  extensionsDynamicPath: process.env.ASTERISK_EXTENSIONS_DYNAMIC_PATH ?? '/etc/asterisk/extensions_dynamic.conf',
 }));

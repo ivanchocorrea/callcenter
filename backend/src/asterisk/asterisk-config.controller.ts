@@ -1,6 +1,7 @@
 import { Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AsteriskConfigService } from './asterisk-config.service';
+import { DialplanGeneratorService } from './dialplan-generator.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
@@ -8,7 +9,10 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 @ApiBearerAuth()
 @Controller('asterisk')
 export class AsteriskConfigController {
-  constructor(private readonly svc: AsteriskConfigService) {}
+  constructor(
+    private readonly svc: AsteriskConfigService,
+    private readonly dialplan: DialplanGeneratorService,
+  ) {}
 
   @Get('status')
   @Roles('super_admin', 'company_admin')
@@ -40,5 +44,13 @@ export class AsteriskConfigController {
   async reload() {
     const ok = await this.svc.reloadPjsip();
     return { reloaded: ok };
+  }
+
+  @Post('sync-dialplan')
+  @HttpCode(200)
+  @Roles('super_admin', 'company_admin')
+  @ApiOperation({ summary: 'Regenera extensions_dynamic.conf desde la BD (DIDs, IVR, colas, horarios, festivos) y hace dialplan reload' })
+  syncDialplan() {
+    return this.dialplan.syncDialplan();
   }
 }
