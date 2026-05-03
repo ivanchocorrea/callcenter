@@ -100,6 +100,7 @@ export class SipClient {
   }
 
   async stop(): Promise<void> {
+    this.stopRingback();
     try { await this.registerer?.unregister(); } catch { /* ignore */ }
     try { await this.ua?.stop(); } catch { /* ignore */ }
     this.ua = null;
@@ -218,15 +219,73 @@ export class SipClient {
   private bindSession(session: Session): void {
     this.currentSession = session;
     session.stateChange.addListener(state => {
+      if (state === SessionState.Establishing) {
+        // Ringback local solo para llamadas SALIENTES (Inviter). En entrantes
+        // (Invitation) ya hay un ringtone diferente en el banner del dialer.
+        if (session instanceof Inviter) {
+          this.startRingback();
+        }
+      }
       if (state === SessionState.Established) {
+        this.stopRingback();
         this.attachRemoteAudio(session);
         this.emit({ type: 'connected', session });
       }
       if (state === SessionState.Terminated) {
+        this.stopRingback();
         this.emit({ type: 'ended', session });
         if (this.currentSession === session) this.currentSession = null;
       }
     });
+  }
+
+  // ---------- ringback local (saliente)
+  // Sin esto, cuando el agente marca afuera no oye ningun "tu-tu" mientras
+  // espera que contesten — solo silencio, hasta que la otra persona dice
+  // "alo". Reproducimos un beep dual (440+480Hz) cada 6s, cadencia US-style.
+
+  private ringbackCtx: AudioContext | null = null;
+  private ringbackStopped = true;
+  private ringbackTimer: number | null = null;
+
+  private startRingback(): void {
+    if (this.ringbackCtx) return;
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    this.ringbackCtx = new AC();
+    this.ringbackStopped = false;
+    const beep = () => {
+      if (this.ringbackStopped || !this.ringbackCtx) return;
+      try {
+        const ctx = this.ringbackCtx;
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.frequency.setValueAtTime(440, ctx.currentTime);
+        osc2.frequency.setValueAtTime(480, ctx.currentTime);
+        osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.9);
+        osc1.start(); osc2.start();
+        osc1.stop(ctx.currentTime + 2);
+        osc2.stop(ctx.currentTime + 2);
+      } catch { /* ignore */ }
+      this.ringbackTimer = window.setTimeout(beep, 4000); // 2s on / 4s off
+    };
+    beep();
+  }
+
+  private stopRingback(): void {
+    this.ringbackStopped = true;
+    if (this.ringbackTimer != null) {
+      clearTimeout(this.ringbackTimer);
+      this.ringbackTimer = null;
+    }
+    if (this.ringbackCtx) {
+      this.ringbackCtx.close().catch(() => undefined);
+      this.ringbackCtx = null;
+    }
   }
 
   private attachRemoteAudio(session: Session): void {

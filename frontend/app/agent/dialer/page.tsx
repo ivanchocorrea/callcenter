@@ -6,7 +6,7 @@ import {
   Phone, PhoneOff, PhoneOutgoing, PhoneIncoming, PhoneMissed, PhoneForwarded,
   Delete, Mic, MicOff, Volume2, VolumeX, Pause, Play,
   Search, ChevronLeft, ChevronRight, FileText, History, X,
-  Coffee, GraduationCap, Power, ChevronDown, Save, StickyNote,
+  Coffee, GraduationCap, Power, ChevronDown, Save, StickyNote, User,
 } from 'lucide-react';
 import { api, unwrap } from '@/lib/api/client';
 import { useSip } from '@/lib/webrtc/sip-context';
@@ -482,8 +482,8 @@ export default function DialerPage() {
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white p-5 shadow-lg">
                       <div className="flex items-start gap-3">
-                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-xl font-bold ring-2 ring-white/30">
-                          {getInitials(displayName ?? destNumber)}
+                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center ring-2 ring-white/30">
+                          <User className="w-7 h-7 text-white" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[10px] uppercase tracking-widest text-white/70 font-bold">
@@ -906,6 +906,23 @@ function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, on
 }) {
   const [ringingFor, setRingingFor] = useState(0);
   const [ringMuted, setRingMuted] = useState(false);
+  // Lock para evitar dobles clicks (el handler async tarda y el usuario
+  // pulsa varias veces creyendo que no respondio).
+  const [answering, setAnswering] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+
+  const handleAnswer = () => {
+    if (answering) return;
+    setAnswering(true);
+    onAnswer();
+    // No reseteamos answering — cuando el banner desaparece (state incoming
+    // pasa a null), el componente se desmonta entero.
+  };
+  const handleReject = () => {
+    if (rejecting) return;
+    setRejecting(true);
+    onReject();
+  };
 
   // Timer
   useEffect(() => {
@@ -973,8 +990,8 @@ function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, on
           <div className="relative shrink-0">
             <div className="absolute inset-0 rounded-full bg-white/40 animate-ping" />
             <div className="absolute inset-0 rounded-full bg-white/20 animate-ping" style={{ animationDelay: '0.5s' }} />
-            <div className="relative w-16 h-16 rounded-full bg-white/25 backdrop-blur ring-2 ring-white/60 flex items-center justify-center text-xl font-bold">
-              {getInitials(name)}
+            <div className="relative w-16 h-16 rounded-full bg-white/25 backdrop-blur ring-2 ring-white/60 flex items-center justify-center">
+              <User className="w-8 h-8 text-white" />
             </div>
           </div>
           <div className="flex-1 min-w-0">
@@ -1007,20 +1024,25 @@ function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, on
           </div>
         )}
 
-        {/* Botones */}
+        {/* Botones — el children con pointer-events-none evita que el icono
+            capture el click y pierda el evento. */}
         <div className="mt-5 flex gap-3">
           <button
-            onClick={onAnswer}
-            className="flex-1 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition"
+            onClick={handleAnswer}
+            disabled={answering}
+            className="flex-1 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition disabled:opacity-70 disabled:cursor-wait"
           >
-            <Phone className="w-5 h-5" /> Contestar
+            <Phone className="w-5 h-5 pointer-events-none" />
+            <span className="pointer-events-none">{answering ? 'Conectando…' : 'Contestar'}</span>
           </button>
           {allowReject && (
             <button
-              onClick={onReject}
-              className="flex-1 rounded-2xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 transition"
+              onClick={handleReject}
+              disabled={rejecting}
+              className="flex-1 rounded-2xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 transition disabled:opacity-70 disabled:cursor-wait"
             >
-              <PhoneOff className="w-5 h-5" /> Rechazar
+              <PhoneOff className="w-5 h-5 pointer-events-none" />
+              <span className="pointer-events-none">{rejecting ? 'Rechazando…' : 'Rechazar'}</span>
             </button>
           )}
         </div>
