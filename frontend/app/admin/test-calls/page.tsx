@@ -54,10 +54,21 @@ export default function TestCallsPage() {
       api.get('/asterisk/status').then(r => unwrap<AsteriskStatus>(r)).catch(() => null),
     ]).then(([t, a, s]) => {
       setTrunks(t);
-      const mapped = a.map((x: any) => ({ id: x.id, extension: x.extension, display_name: x.display_name ?? x.displayName, online: x.online }));
+      // Online = current_status !== 'offline'. El backend no devuelve `online`
+      // como campo, lo derivamos. Cuando el agente entra al dialer + SIP
+      // se registra, su status cambia a 'available' (ver dialer/page.tsx
+      // useEffect). Si lo cambian a pausa/almuerzo/etc tambien cuenta como
+      // online. Solo 'offline' explicito = no conectado.
+      const mapped = a.map((x: any) => {
+        const status = x.currentStatus ?? x.current_status ?? 'offline';
+        return {
+          id: x.id,
+          extension: x.extension,
+          display_name: x.display_name ?? x.displayName,
+          online: status !== 'offline',
+        };
+      });
       setAgents(mapped);
-      // Auto-seleccionar el primer agente activo para que admin/super_admin
-      // puedan probar sin elegir manualmente
       if (mapped.length > 0 && selectedAgentId == null) {
         setSelectedAgentId(mapped[0].id ?? null);
       }
