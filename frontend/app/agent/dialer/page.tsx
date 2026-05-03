@@ -232,6 +232,26 @@ export default function DialerPage() {
     try { await api.put('/agents/me/status', { status: s }); } catch { /* revert? */ }
   }
 
+  // Auto-marcar "Disponible" cuando el SIP del agente queda registrado.
+  // Antes el agente entraba al dialer y quedaba "offline" hasta que cambiaba
+  // manualmente — el supervisor no podia ver quien estaba conectado.
+  // Solo dispara la transicion offline→available; si el agente ya esta en
+  // pausa/almuerzo/etc al reconectar, respetamos su eleccion y no la pisamos.
+  useEffect(() => {
+    if (sip.state !== 'registered') return;
+    if (agentStatus !== 'offline') return;
+    void changeStatus('available');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sip.state, agentStatus]);
+
+  // Cuando el agente cierra sesion / pierde conexion SIP, marcar offline.
+  useEffect(() => {
+    if (sip.state === 'unregistered' || sip.state === 'failed') {
+      if (agentStatus !== 'offline') void changeStatus('offline');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sip.state]);
+
   async function saveNotes(opts: { silent?: boolean } = {}) {
     if (!activeCallId || savingNotes) return;
     // Nada que guardar — evita request vacío al auto-guardar
