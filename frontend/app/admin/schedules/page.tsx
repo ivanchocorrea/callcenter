@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Plus, Clock, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Clock, Calendar, Trash2, Pencil } from 'lucide-react';
 import { confirmAsync, toastShow } from '@/lib/ui/dialog-helper';
 
 const DAYS = [
@@ -37,6 +37,7 @@ export default function SchedulesPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [openHours, setOpenHours] = useState(false);
+  const [editingHours, setEditingHours] = useState<Hours | null>(null);
   const [openHoliday, setOpenHoliday] = useState(false);
 
   function reload() {
@@ -106,9 +107,14 @@ export default function SchedulesPage() {
                     </div>
                     <div className="text-xs text-slate-500">{h.timezone}</div>
                   </div>
-                  <button onClick={() => deleteHours(h.id, h.name)} className="text-slate-400 hover:text-rose-600">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="inline-flex gap-1">
+                    <button onClick={() => setEditingHours(h)} title="Editar" className="p-1.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteHours(h.id, h.name)} title="Eliminar" className="p-1.5 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-7 gap-2 text-xs">
                   {DAYS.map(d => {
@@ -174,24 +180,33 @@ export default function SchedulesPage() {
       </div>
 
       {openHours && <HoursModal onClose={() => setOpenHours(false)} onSaved={reload} />}
+      {editingHours && <HoursModal initial={editingHours} onClose={() => setEditingHours(null)} onSaved={reload} />}
       {openHoliday && <HolidayModal onClose={() => setOpenHoliday(false)} onSaved={reload} />}
     </AppShell>
   );
 }
 
-function HoursModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('');
-  const [timezone, setTimezone] = useState('America/Bogota');
-  const [isDefault, setIsDefault] = useState(false);
-  const [schedule, setSchedule] = useState<Record<string, { from: string; to: string }[]>>({
-    mon: [{ from: '08:00', to: '18:00' }],
-    tue: [{ from: '08:00', to: '18:00' }],
-    wed: [{ from: '08:00', to: '18:00' }],
-    thu: [{ from: '08:00', to: '18:00' }],
-    fri: [{ from: '08:00', to: '18:00' }],
-    sat: [],
-    sun: [],
-  });
+function HoursModal({ onClose, onSaved, initial }: {
+  onClose: () => void;
+  onSaved: () => void;
+  /** Si se pasa, modal entra en modo EDIT (PATCH). */
+  initial?: Hours;
+}) {
+  const isEdit = !!initial;
+  const [name, setName] = useState(initial?.name ?? '');
+  const [timezone, setTimezone] = useState(initial?.timezone ?? 'America/Bogota');
+  const [isDefault, setIsDefault] = useState(initial?.is_default ?? false);
+  const [schedule, setSchedule] = useState<Record<string, { from: string; to: string }[]>>(
+    initial?.schedule ?? {
+      mon: [{ from: '08:00', to: '18:00' }],
+      tue: [{ from: '08:00', to: '18:00' }],
+      wed: [{ from: '08:00', to: '18:00' }],
+      thu: [{ from: '08:00', to: '18:00' }],
+      fri: [{ from: '08:00', to: '18:00' }],
+      sat: [],
+      sun: [],
+    },
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -208,7 +223,12 @@ function HoursModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
     if (!name) return setError('Nombre requerido');
     setSubmitting(true);
     try {
-      await api.post('/schedules/business-hours', { name, timezone, schedule, is_default: isDefault });
+      const payload = { name, timezone, schedule, is_default: isDefault };
+      if (isEdit) {
+        await api.patch(`/schedules/business-hours/${initial!.id}`, payload);
+      } else {
+        await api.post('/schedules/business-hours', payload);
+      }
       onSaved(); onClose();
     } catch (e: any) {
       setError(e?.response?.data?.error?.message ?? 'Error al guardar');
@@ -219,7 +239,7 @@ function HoursModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold">Nuevo horario de atención</h3>
+          <h3 className="text-lg font-semibold">{isEdit ? 'Editar horario de atención' : 'Nuevo horario de atención'}</h3>
           <button onClick={onClose} className="text-slate-400">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">

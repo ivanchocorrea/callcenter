@@ -59,10 +59,13 @@ export default function SmsPage() {
           <p className="text-slate-500 mt-1">Envía SMS y revisa el log de envíos.</p>
         </div>
 
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex gap-3 text-sm">
-          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-amber-800">
-            <strong>Configurar proveedor SMS:</strong> Por ahora se hace por SQL en la tabla <code className="bg-white px-1 rounded">sms_providers</code> (Twilio, Plivo, MessageBird, custom HTTP). Una vez configurado, este formulario lo usará automáticamente.
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex gap-3 text-sm">
+          <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+          <div className="text-blue-800">
+            <strong>¿Aún no configuraste un proveedor SMS?</strong>{' '}
+            Andá a{' '}
+            <a href="/admin/sms-providers" className="underline font-semibold hover:text-blue-900">/admin/sms-providers</a>{' '}
+            y agregá Twilio, Plivo, MessageBird o un HTTP custom. Sin proveedor activo este formulario falla.
           </div>
         </div>
 
