@@ -38,16 +38,29 @@ export class InboundDispatcherService implements OnModuleInit {
     if (!event) return;
     const { name, payload, source } = event;
 
-    // ----- AMI: UserEvent disparado desde el dialplan from-trunk -----
-    // Sirve para registrar entrantes en `calls` cuando el dialplan no
-    // pasa por Stasis (mantiene Dial directo al endpoint del agente).
+    // ----- AMI: eventos del dialplan + bridge para tracking en vivo -----
+    // Sirve para que /admin/live muestre datos REALES en tiempo real:
+    // - UserEvent CallcenterInbound: crea fila calls
+    // - UserEvent CallcenterInboundEnd: actualiza status final + duration
+    // - BridgeEnter: cuando un endpoint de agente entra al bridge → asociar
+    //   agent_id a la call + marcar agente como 'busy' (talking)
+    // - Hangup del canal del agente: marcar agente de vuelta como 'available'
     if (source === 'ami') {
-      if (name === 'UserEvent' && (payload?.userevent === 'CallcenterInbound' || payload?.UserEvent === 'CallcenterInbound')) {
+      const evtName = (payload?.userevent ?? payload?.UserEvent ?? '').toLowerCase();
+      if (name === 'UserEvent' && evtName === 'callcenterinbound') {
         await this.onAmiInbound(payload);
         return;
       }
-      if (name === 'UserEvent' && (payload?.userevent === 'CallcenterInboundEnd' || payload?.UserEvent === 'CallcenterInboundEnd')) {
+      if (name === 'UserEvent' && evtName === 'callcenterinboundend') {
         await this.onAmiInboundEnd(payload);
+        return;
+      }
+      if (name === 'BridgeEnter') {
+        await this.onAmiBridgeEnter(payload);
+        return;
+      }
+      if (name === 'Hangup' || name === 'SoftHangupRequest') {
+        await this.onAmiHangup(payload);
         return;
       }
       return;
@@ -253,5 +266,98 @@ export class InboundDispatcherService implements OnModuleInit {
     if (call.endedAt) return;
     await this.calls.setStatus(Number(call.id), 'completed');
     await this.bus.publish(`co:${call.companyId}:call`, { type: 'call.ended', call_id: Number(call.id) });
+  }
+
+  // ----- AMI: tracking en vivo de llamadas activas + estado de agentes -----
+
+  /**
+   * BridgeEnter — un canal entró al bridge de la llamada. Si el canal es
+   * de un agente (formato Channel: PJSIP/<ext>-<id>), asocia agent_id a
+   * la call y marca al agente como 'busy' (en llamada).
+   *
+   * Esto da datos REALES en /admin/live para "quien está hablando con quien".
+   */
+  private async onAmiBridgeEnter(payload: any): Promise<void> {
+    const channelName: string = payload?.channel ?? payload?.Channel ?? '';
+    const linkedid: string = payload?.linkedid ?? payload?.Linkedid ?? '';
+    if (!channelName || !linkedid) return;
+
+    // Match PJSIP/<ext>-<chan_id> donde <ext> es la extension del agente
+    const match = /^PJSIP\/(\d+)-/.exec(channelName);
+    if (!match) return;
+    const ext = match[1];
+
+    try {
+      const agentRow = await this.ds.query(
+        `SELECT id, company_id, current_status FROM agents WHERE extension = ? LIMIT 1`,
+        [ext],
+      );
+      if (!agentRow.length) return;
+      const agentId = Number(agentRow[0].id);
+      const companyId = Number(agentRow[0].company_id);
+
+      // Buscar la call por linkedid (es el uniqueid del canal entrante)
+      const call = await this.calls.findByUniqueid(linkedid);
+      if (call && !call.agentId) {
+        await this.calls.patch(Number(call.id), { agentId });
+        // Marcar la call como 'answered' (ahora sí esta sonando o conectada)
+        await this.calls.setStatus(Number(call.id), 'answered');
+        this.logger.log(`Bridge: call_id=${call.id} asociado a agent_id=${agentId} (ext ${ext})`);
+        await this.bus.publish(`co:${companyId}:call`, { type: 'call.answered', call_id: Number(call.id), agent_id: agentId });
+      }
+
+      // Marcar al agente como 'busy' (talking) si no estaba
+      if (agentRow[0].current_status !== 'busy') {
+        await this.ds.query(
+          `UPDATE agents SET current_status = 'busy', current_status_changed_at = NOW() WHERE id = ?`,
+          [agentId],
+        );
+        await this.bus.publish(`co:${companyId}:agent`, { type: 'agent.status_changed', agent_id: agentId, status: 'busy' });
+      }
+    } catch (e: any) {
+      this.logger.warn(`BridgeEnter fallo (channel=${channelName}): ${e?.message}`);
+    }
+  }
+
+  /**
+   * Hangup — cualquier canal terminó. Si es de un agente y este no tiene
+   * más llamadas activas, marcarlo de vuelta como 'available'.
+   */
+  private async onAmiHangup(payload: any): Promise<void> {
+    const channelName: string = payload?.channel ?? payload?.Channel ?? '';
+    if (!channelName) return;
+
+    const match = /^PJSIP\/(\d+)-/.exec(channelName);
+    if (!match) return;
+    const ext = match[1];
+
+    try {
+      const agentRow = await this.ds.query(
+        `SELECT id, company_id, current_status FROM agents WHERE extension = ? LIMIT 1`,
+        [ext],
+      );
+      if (!agentRow.length) return;
+      const agentId = Number(agentRow[0].id);
+      const companyId = Number(agentRow[0].company_id);
+
+      // Solo cambiar a available si estaba busy (no tocar paused/lunch/etc)
+      if (agentRow[0].current_status === 'busy') {
+        // Verificar que no tiene otra call activa
+        const activeCount = await this.ds.query(
+          `SELECT COUNT(*) AS n FROM calls WHERE agent_id = ? AND status IN ('ringing','answered','initiated') AND ended_at IS NULL`,
+          [agentId],
+        );
+        const hasOther = Number(activeCount[0]?.n ?? 0) > 0;
+        if (!hasOther) {
+          await this.ds.query(
+            `UPDATE agents SET current_status = 'available', current_status_changed_at = NOW() WHERE id = ?`,
+            [agentId],
+          );
+          await this.bus.publish(`co:${companyId}:agent`, { type: 'agent.status_changed', agent_id: agentId, status: 'available' });
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`Hangup fallo (channel=${channelName}): ${e?.message}`);
+    }
   }
 }
