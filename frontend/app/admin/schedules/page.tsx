@@ -39,6 +39,7 @@ export default function SchedulesPage() {
   const [openHours, setOpenHours] = useState(false);
   const [editingHours, setEditingHours] = useState<Hours | null>(null);
   const [openHoliday, setOpenHoliday] = useState(false);
+  const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
 
   function reload() {
     setLoading(true);
@@ -168,9 +169,14 @@ export default function SchedulesPage() {
                   <td className="px-4 py-2">{h.is_recurring ? '🔄 sí' : '—'}</td>
                   <td className="px-4 py-2 font-mono text-xs">{h.country ?? '—'}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => deleteHoliday(h.id, h.name)} className="text-slate-400 hover:text-rose-600">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="inline-flex gap-1">
+                      <button onClick={() => setEditingHoliday(h)} title="Editar" className="p-1.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => deleteHoliday(h.id, h.name)} title="Eliminar" className="p-1.5 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -182,6 +188,7 @@ export default function SchedulesPage() {
       {openHours && <HoursModal onClose={() => setOpenHours(false)} onSaved={reload} />}
       {editingHours && <HoursModal initial={editingHours} onClose={() => setEditingHours(null)} onSaved={reload} />}
       {openHoliday && <HolidayModal onClose={() => setOpenHoliday(false)} onSaved={reload} />}
+      {editingHoliday && <HolidayModal initial={editingHoliday} onClose={() => setEditingHoliday(null)} onSaved={reload} />}
     </AppShell>
   );
 }
@@ -288,11 +295,17 @@ function HoursModal({ onClose, onSaved, initial }: {
   );
 }
 
-function HolidayModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('');
-  const [date, setDate] = useState('');
-  const [recurring, setRecurring] = useState(false);
-  const [country, setCountry] = useState('CO');
+function HolidayModal({ onClose, onSaved, initial }: {
+  onClose: () => void;
+  onSaved: () => void;
+  /** Si se pasa, modal entra en modo EDIT (PATCH /schedules/holidays/:id). */
+  initial?: Holiday;
+}) {
+  const isEdit = !!initial;
+  const [name, setName] = useState(initial?.name ?? '');
+  const [date, setDate] = useState(initial?.holiday_date ?? '');
+  const [recurring, setRecurring] = useState(initial?.is_recurring ?? false);
+  const [country, setCountry] = useState(initial?.country ?? 'CO');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -301,7 +314,12 @@ function HolidayModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     if (!name || !date) return setError('Nombre y fecha requeridos');
     setSubmitting(true);
     try {
-      await api.post('/schedules/holidays', { name, holiday_date: date, is_recurring: recurring, country: country || undefined });
+      const payload = { name, holiday_date: date, is_recurring: recurring, country: country || undefined };
+      if (isEdit) {
+        await api.patch(`/schedules/holidays/${initial!.id}`, payload);
+      } else {
+        await api.post('/schedules/holidays', payload);
+      }
       onSaved(); onClose();
     } catch (e: any) { setError(e?.response?.data?.error?.message ?? 'Error'); } finally { setSubmitting(false); }
   }
@@ -310,7 +328,7 @@ function HolidayModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold">Nuevo festivo</h3>
+          <h3 className="text-lg font-semibold">{isEdit ? 'Editar festivo' : 'Nuevo festivo'}</h3>
           <button onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-3">
