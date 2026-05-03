@@ -29,6 +29,8 @@ import {
   CreditCard,
   Activity,
   LogOut,
+  User as UserIcon,
+  ChevronDown,
   Settings,
   Megaphone,
   ClipboardCheck,
@@ -236,18 +238,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             });
           })()}
         </nav>
-        <div className="border-t border-white/10 px-3 py-3 space-y-2">
-          <div className="px-2">
-            <div className="text-sm font-medium truncate">{user.full_name || user.email}</div>
-            <div className="text-xs text-slate-400 truncate">{user.email}</div>
-          </div>
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-slate-300 hover:bg-white/5 hover:text-white"
-          >
-            <LogOut className="w-4 h-4" /> Cerrar sesión
-          </button>
-        </div>
       </aside>
 
       <main className="flex-1 overflow-auto">
@@ -272,6 +262,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="text-slate-500">
               {user.company_id ? `Empresa #${user.company_id}` : 'Sin empresa'}
             </span>
+            <UserMenu user={user} role={role} onLogout={logout} />
           </div>
         </header>
         <div className="p-6">{children}</div>
@@ -287,4 +278,43 @@ function titleFromPath(p: string): string {
   return last
     .replace(/-/g, ' ')
     .replace(/^\w/, c => c.toUpperCase());
+}
+
+function UserMenu({ user, role, onLogout }: { user: { full_name?: string; email: string }; role: string; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const name = user.full_name || user.email;
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50"
+      >
+        <span className="w-7 h-7 rounded-full bg-brand-600 text-white text-xs font-bold flex items-center justify-center">
+          {initial}
+        </span>
+        <span className="text-sm font-medium text-slate-700 max-w-[140px] truncate">{name}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+      </button>
+      {open && (
+        <>
+          {/* Click outside cierra el menu */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 z-20 w-64 bg-white border border-slate-200 rounded-xl shadow-lg py-1">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <div className="text-sm font-semibold text-slate-900 truncate">{user.full_name}</div>
+              <div className="text-xs text-slate-500 truncate">{user.email}</div>
+              <div className="mt-1 text-[10px] uppercase tracking-wide text-slate-400">{role.replace('_', ' ')}</div>
+            </div>
+            <button
+              onClick={() => { setOpen(false); onLogout(); }}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50"
+            >
+              <LogOut className="w-4 h-4" /> Cerrar sesión
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
