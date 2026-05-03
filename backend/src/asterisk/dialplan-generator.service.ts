@@ -1,8 +1,9 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { AsteriskBridgeService } from './asterisk-bridge.service';
+import { EventBusService } from '../events/event-bus.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -31,14 +32,40 @@ import * as path from 'path';
  * primer paso de [from-trunk] hacia este archivo dinamico.
  */
 @Injectable()
-export class DialplanGeneratorService implements OnApplicationBootstrap {
+export class DialplanGeneratorService implements OnApplicationBootstrap, OnModuleInit {
   private readonly logger = new Logger(DialplanGeneratorService.name);
+  private debounceTimer: NodeJS.Timeout | null = null;
 
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly bridge: AsteriskBridgeService,
     private readonly config: ConfigService,
+    private readonly bus: EventBusService,
   ) {}
+
+  /**
+   * Suscribirse al evento `dialplan.invalidated` que publican los
+   * services cuando cambian datos relevantes (horarios, festivos, IVR,
+   * colas, troncales, DIDs). Hacemos debounce 2s para no regenerar
+   * 5 veces si el admin guarda 5 cosas seguidas.
+   */
+  onModuleInit(): void {
+    this.bus.on('dialplan.invalidated', () => this.scheduleSync());
+  }
+
+  /**
+   * Programa un sync con debounce 2s. Si llegan multiples invalidaciones
+   * en rapida sucesion, solo corre una vez al final.
+   */
+  private scheduleSync(): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.syncDialplan()
+        .then(r => this.logger.log(`Auto-sync dialplan (event): written=${r.written} reloaded=${r.reloaded} bytes=${r.bytes}`))
+        .catch(e => this.logger.error(`Auto-sync dialplan (event) fallo: ${e?.message}`));
+    }, 2000);
+  }
 
   /**
    * Al arrancar el backend, esperamos 5s a que MySQL este ready y

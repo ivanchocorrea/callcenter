@@ -56,14 +56,18 @@ export class QueuesService {
   async create(companyId: number, dto: Partial<Queue> & { slug: string; name: string }): Promise<Queue> {
     const exists = await this.repo.findOne({ where: { companyId, slug: dto.slug } });
     if (exists) throw new ConflictException();
-    return this.repo.save(this.repo.create({ ...dto, companyId, isActive: true } as Queue));
+    const saved = await this.repo.save(this.repo.create({ ...dto, companyId, isActive: true } as Queue));
+    this.bus.publish('dialplan.invalidated', { source: 'queues' }).catch(() => undefined);
+    return saved;
   }
 
   async update(id: number, companyId: number, dto: Partial<Queue>): Promise<Queue> {
     const q = await this.repo.findOne({ where: { id, companyId } });
     if (!q) throw new NotFoundException();
     Object.assign(q, dto);
-    return this.repo.save(q);
+    const saved = await this.repo.save(q);
+    this.bus.publish('dialplan.invalidated', { source: 'queues' }).catch(() => undefined);
+    return saved;
   }
 
   async addAgent(queueId: number, agentId: number, penalty = 0): Promise<void> {

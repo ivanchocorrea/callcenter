@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { EventBusService } from '../events/event-bus.service';
 
 export interface BusinessHoursDto {
   name: string;
@@ -18,7 +19,15 @@ export interface HolidayDto {
 
 @Injectable()
 export class SchedulesService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly bus: EventBusService,
+  ) {}
+
+  /** Notifica al DialplanGenerator que algo cambio y debe regenerar. */
+  private invalidateDialplan(): void {
+    this.bus.publish('dialplan.invalidated', { source: 'schedules' }).catch(() => undefined);
+  }
 
   // ---------- business_hours
   async listHours(companyId: number): Promise<unknown[]> {
@@ -38,6 +47,7 @@ export class SchedulesService {
        VALUES (?, ?, ?, ?, ?)`,
       [companyId, dto.name, dto.timezone ?? 'America/Bogota', JSON.stringify(dto.schedule), dto.is_default ?? false],
     );
+    this.invalidateDialplan();
     return { id: r?.insertId ?? r?.[0]?.insertId };
   }
 
@@ -54,10 +64,12 @@ export class SchedulesService {
     if (!sets.length) return;
     params.push(id, companyId);
     await this.ds.query(`UPDATE business_hours SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`, params);
+    this.invalidateDialplan();
   }
 
   async removeHours(id: number, companyId: number): Promise<void> {
     await this.ds.query(`DELETE FROM business_hours WHERE id = ? AND company_id = ?`, [id, companyId]);
+    this.invalidateDialplan();
   }
 
   // ---------- holidays
@@ -70,10 +82,12 @@ export class SchedulesService {
       `INSERT INTO holidays (company_id, name, holiday_date, is_recurring, country) VALUES (?, ?, ?, ?, ?)`,
       [companyId, dto.name, dto.holiday_date, dto.is_recurring ?? false, dto.country ?? null],
     );
+    this.invalidateDialplan();
     return { id: r?.insertId ?? r?.[0]?.insertId };
   }
 
   async removeHoliday(id: number, companyId: number): Promise<void> {
     await this.ds.query(`DELETE FROM holidays WHERE id = ? AND company_id = ?`, [id, companyId]);
+    this.invalidateDialplan();
   }
 }

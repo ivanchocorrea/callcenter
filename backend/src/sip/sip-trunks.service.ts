@@ -16,6 +16,7 @@ import { EncryptionService } from '../common/encryption/encryption.service';
 import { AsteriskRealtimeService } from './asterisk-realtime.service';
 import { AsteriskConfigService } from '../asterisk/asterisk-config.service';
 import { AuditService } from '../audit/audit.service';
+import { EventBusService } from '../events/event-bus.service';
 
 export interface SipConnectionTestResult {
   success: boolean;
@@ -71,10 +72,13 @@ export class SipTrunksService {
     private readonly realtime: AsteriskRealtimeService,
     private readonly asteriskConfig: AsteriskConfigService,
     private readonly audit: AuditService,
+    private readonly bus: EventBusService,
   ) {}
 
   /** Regenera trunks.conf con todas las troncales y hace pjsip reload. NO crashea
-   *  si Asterisk está caído (queda como warning en log y next sync lo retoma). */
+   *  si Asterisk está caído (queda como warning en log y next sync lo retoma).
+   *  También invalida el dialplan dinámico (los DIDs implícitos dependen de
+   *  los caller_id de las troncales). */
   private async syncTrunksFile(): Promise<void> {
     try {
       const r = await this.asteriskConfig.syncAllTrunks();
@@ -84,6 +88,8 @@ export class SipTrunksService {
     } catch (err: any) {
       this.logger.warn(`syncAllTrunks falló: ${err?.message ?? err}`);
     }
+    // Notificar al DialplanGenerator que regenere extensions_dynamic.conf
+    this.bus.publish('dialplan.invalidated', { source: 'sip-trunks' }).catch(() => undefined);
   }
 
   // ---------------------------------------------------------------- CRUD

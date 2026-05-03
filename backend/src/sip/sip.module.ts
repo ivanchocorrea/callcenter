@@ -5,9 +5,10 @@ import { SipTrunksService } from './sip-trunks.service';
 import { SipTrunksController } from './sip-trunks.controller';
 import { AsteriskRealtimeService } from './asterisk-realtime.service';
 import { AsteriskModule } from '../asterisk/asterisk.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SipTrunk]), AsteriskModule],
+  imports: [TypeOrmModule.forFeature([SipTrunk]), AsteriskModule, EventsModule],
   providers: [SipTrunksService, AsteriskRealtimeService],
   controllers: [SipTrunksController],
   exports: [SipTrunksService, AsteriskRealtimeService],

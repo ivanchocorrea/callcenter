@@ -70,6 +70,7 @@ export class IvrService {
     if (dto.options?.length) {
       await this.replaceOptions(Number(saved.id), companyId, dto.options);
     }
+    this.bus.publish('dialplan.invalidated', { source: 'ivr.create' }).catch(() => undefined);
     return saved;
   }
 
@@ -88,6 +89,7 @@ export class IvrService {
     if (dto.max_attempts !== undefined) m.maxAttempts = dto.max_attempts;
     const saved = await this.menuRepo.save(m);
     if (dto.options) await this.replaceOptions(Number(saved.id), companyId, dto.options);
+    this.bus.publish('dialplan.invalidated', { source: 'ivr.update' }).catch(() => undefined);
     return saved;
   }
 
@@ -95,6 +97,7 @@ export class IvrService {
     const m = await this.menuRepo.findOne({ where: { id, companyId } });
     if (!m) throw new NotFoundException();
     await this.menuRepo.remove(m);
+    this.bus.publish('dialplan.invalidated', { source: 'ivr.delete' }).catch(() => undefined);
   }
 
   private async replaceOptions(menuId: number, companyId: number, options: IvrOptionDto[]): Promise<void> {
