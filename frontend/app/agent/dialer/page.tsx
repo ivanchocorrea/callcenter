@@ -996,7 +996,12 @@ function IncomingCallBanner({ fromNumber, displayName, customer, allowReject, on
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-xl truncate">{name}</div>
-            <div className="text-sm text-white/80 font-mono truncate">{fromNumber}</div>
+            {/* Solo mostrar el numero debajo si el `name` arriba no es ya el
+                numero (cliente registrado con nombre, o display name del SIP).
+                Sino se ve el numero repetido. */}
+            {name !== fromNumber && (
+              <div className="text-sm text-white/80 font-mono truncate">{fromNumber}</div>
+            )}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               {isVip && (
                 <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-bold">
