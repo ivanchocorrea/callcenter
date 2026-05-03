@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shared/AppShell';
 import { api, unwrap } from '@/lib/api/client';
-import { Phone, PhoneIncoming, PhoneOutgoing, PhoneOff, Clock, Users, Activity, Coffee, GraduationCap, Power, Pause } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, PhoneOff, Clock, Users, Activity, Coffee, GraduationCap, Power, Pause, Headphones, X } from 'lucide-react';
 
 type AgentStatus = 'available' | 'busy' | 'paused' | 'lunch' | 'training' | 'offline' | string;
 
@@ -63,6 +63,7 @@ export default function LivePage() {
   const [queuedCalls, setQueuedCalls] = useState<Call[]>([]);
   const [todayStats, setTodayStats] = useState<{ total: number; answered: number; missed: number; abandoned: number } | null>(null);
   const [tick, setTick] = useState(0);
+  const [spyAgent, setSpyAgent] = useState<{ extension: string; name: string } | null>(null);
 
   function reload() {
     Promise.all([
@@ -198,6 +199,7 @@ export default function LivePage() {
                   <th className="text-left px-4 py-2">Estado</th>
                   <th className="text-left px-4 py-2">Agente</th>
                   <th className="text-right px-4 py-2">Iniciada hace</th>
+                  <th className="text-right px-4 py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -213,6 +215,19 @@ export default function LivePage() {
                       <td className="px-4 py-2"><code className="text-xs bg-slate-100 px-1.5 rounded">{c.status}</code></td>
                       <td className="px-4 py-2">{ag ? (ag.displayName ?? ag.display_name ?? `Ext ${ag.extension}`) : <span className="text-slate-400 text-xs">— sin agente —</span>}</td>
                       <td className="px-4 py-2 text-right font-mono">{timeSince(c.startedAt ?? c.started_at)}</td>
+                      <td className="px-4 py-2 text-right">
+                        {ag && c.status === 'answered' ? (
+                          <button
+                            onClick={() => setSpyAgent({ extension: ag.extension, name: ag.displayName ?? ag.display_name ?? `Ext ${ag.extension}` })}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-xs font-medium"
+                            title="Espiar / supervisar esta llamada"
+                          >
+                            <Headphones className="w-3 h-3" /> Escuchar
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -264,7 +279,62 @@ export default function LivePage() {
           )}
         </div>
       </div>
+
+      {spyAgent && <SpyModal agent={spyAgent} onClose={() => setSpyAgent(null)} />}
     </AppShell>
+  );
+}
+
+function SpyModal({ agent, onClose }: { agent: { extension: string; name: string }; onClose: () => void }) {
+  const spyExt = `*${agent.extension}`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Headphones className="w-5 h-5 text-purple-600" /> Escuchar llamada
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-5 py-5 space-y-4 text-sm">
+          <p className="text-slate-700">
+            Vas a supervisar la llamada en curso de <strong>{agent.name}</strong> (extensión <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">{agent.extension}</code>).
+          </p>
+
+          <div className="rounded-lg bg-purple-50 border border-purple-200 p-4">
+            <div className="text-xs uppercase tracking-wide font-semibold text-purple-700 mb-2">
+              📋 Para escuchar:
+            </div>
+            <ol className="list-decimal list-inside space-y-1 text-slate-800 text-sm">
+              <li>Abrí tu softphone (MicroSIP, Linphone, navegador con tu extensión SIP, etc.)</li>
+              <li>Marcá: <code className="bg-white px-2 py-0.5 rounded font-mono text-base font-bold text-purple-700">{spyExt}</code></li>
+              <li>Vas a escuchar lo que dicen sin que el agente ni el cliente te escuchen</li>
+            </ol>
+          </div>
+
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+            <strong>Modos durante la escucha:</strong>
+            <ul className="mt-1 space-y-0.5">
+              <li><kbd className="bg-white px-1 rounded">#</kbd> → Whisper (susurrar al agente sin que el cliente escuche)</li>
+              <li><kbd className="bg-white px-1 rounded">*</kbd> → Barge (los 3 hablan)</li>
+              <li><kbd className="bg-white px-1 rounded">colgar</kbd> → terminar la supervisión</li>
+            </ul>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            ⚠️ Solo funciona si tenés una extensión SIP propia registrada en este Asterisk.
+            Si no tenés, pedile al admin que te cree una en <code>/admin/agents</code>.
+          </p>
+        </div>
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-medium">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
